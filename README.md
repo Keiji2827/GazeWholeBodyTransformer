@@ -1,2 +1,2 @@
 # GazeWholeBodyTransformer
-Gaze estimation from whole body kepointa
+Gaze estimation from whole body kepoint
