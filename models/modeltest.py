@@ -4,6 +4,7 @@ import argparse
 import os
 import os.path as op
 import torch
+from bert.model_bert import GAZEBERT_Network as GAZEBERT
 from hrnet.config import config as hrnet_config
 from hrnet.config import update_config as hrnet_update_config
 from hrnet.hrnet_cls_net_featmaps import get_cls_net
@@ -11,6 +12,14 @@ from utils.logger import setup_logger
 from utils.miscellaneous import mkdir
 
 #from dataloader.gafa_loader import create_gafa_dataset
+
+
+
+def run_inference(args, image_list):
+
+
+    return
+
 
 
 def parse_args():
@@ -71,6 +80,12 @@ def main(args):
     backbone_total_param = sum(p.numel() for p in backbone.parameters())
     logger.info("Backbone total parameters: {}".format(backbone_total_param))
 
+
+    # Initialize GAZEBERT model 
+    _gaze_bert = GAZEBERT(args, config, backbone, NULL)
+
+
+
     image_list = []
 
     if not args.image_file_or_path:
@@ -82,7 +97,7 @@ def main(args):
     else:
         raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
 
-    return
+    run_inference(args, image_list)
 
 
 
