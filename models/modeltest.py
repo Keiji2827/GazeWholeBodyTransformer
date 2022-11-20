@@ -2,7 +2,7 @@
 
 import argparse
 import os
-
+import os.path as op
 import torch
 from hrnet.config import config as hrnet_config
 from hrnet.config import update_config as hrnet_update_config
@@ -15,6 +15,11 @@ from utils.miscellaneous import mkdir
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    #########################################################
+    # Data related arguments
+    #########################################################
+    parser.add_argument("--image_file_or_path", default='./data/sample', type=str, 
+                        help="test data")
 
     parser.add_argument("--output_dir", default='output/', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
@@ -66,7 +71,16 @@ def main(args):
     backbone_total_param = sum(p.numel() for p in backbone.parameters())
     logger.info("Backbone total parameters: {}".format(backbone_total_param))
 
+    image_list = []
 
+    if not args.image_file_or_path:
+        raise ValueError("image_file_or_path not specified")
+    elif op.isdir(args.image_file_or_path):
+        for filename in os.listdir(args.image_file_or_path):
+            if filename.endswith(".png") or filename.endswith(".jpg") and "pred" not in filename:
+                image_list.append(args.image_file_or_path+"/"+filename)
+    else:
+        raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
 
     return
 
