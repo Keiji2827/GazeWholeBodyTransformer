@@ -63,7 +63,8 @@ def main(args):
         # remove the last fc layer
         backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
 
-    backbone
+    backbone_total_param = sum(p.numel() for p in backbone.params())
+    logger.info("Backbone total parameters: {}".format(backbone_total_param))
 
 
 
