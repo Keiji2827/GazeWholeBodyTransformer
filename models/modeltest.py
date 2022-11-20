@@ -11,11 +11,42 @@ from hrnet.hrnet_cls_net_featmaps import get_cls_net
 from utils.logger import setup_logger
 from utils.miscellaneous import mkdir
 
+from PIL import Image
+
 #from dataloader.gafa_loader import create_gafa_dataset
 
+transform = transforms.Compose([           
+                    transforms.Resize(224),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225])])
+
+transform_visualize = transforms.Compose([           
+                    transforms.Resize(224),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor()])
 
 
-def run_inference(args, image_list):
+def run_inference(args, image_list, _gaze_bert):
+
+    _gaze_bert.eval()
+
+    for image_file in image_list:
+        if "pred" not in image_file:
+            img = Image.open(image_file)
+            # from torchvision import transforms
+            img_tensor = transform(img)
+            img_visual = transform_visualize(img)
+
+            batch_imgs = torch.unsqueeze(img_tensor, 0).cuda()
+            batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda()
+
+            output = _gaze_bert(batch_imgs)
+
+            print(image_file)
+            print(output)
 
 
     return
@@ -97,7 +128,7 @@ def main(args):
     else:
         raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
 
-    run_inference(args, image_list)
+    run_inference(args, image_list, _gaze_bert)
 
 
 
