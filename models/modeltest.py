@@ -82,7 +82,7 @@ def main(args):
 
 
     # Initialize GAZEBERT model 
-    _gaze_bert = GAZEBERT(args, config, backbone, NULL)
+    _gaze_bert = GAZEBERT(args, backbone)
 
 
 

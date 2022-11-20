@@ -1,14 +1,15 @@
+import torch
 from torch import nn
 
 
-Class GAZEBERT_Network(torch.nn.Module):
+class GAZEBERT_Network(torch.nn.Module):
 
-    def __init__(self, args, config, backbone, trans_encoder):
+    def __init__(self, args, backbone):
         super(GAZEBERT_Network, self).__init__()
-        self.config = config
-        self.config.device = args.device
+        #self.config = config
+        #self.config.device = args.device
         self.backbone = backbone
-        self.trans_encoder = trans_encoder
+        #self.trans_encoder = trans_encoder
 
     def forward(self, images):
         batch_size = images.size()
