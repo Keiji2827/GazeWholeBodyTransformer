@@ -71,16 +71,29 @@ def parse_args():
     #########################################################
     # Loading/saving checkpoints
     #########################################################
+    parser.add_argument("--model_name_or_path", default='models/bert/bert-base-uncased/', type=str, required=False,
+                        help="Path to pre-trained transformer model or model type.")
     parser.add_argument("--resume_checkpoint", default=None, type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
-
     parser.add_argument("--output_dir", default='output/', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
+    parser.add_argument("--config_name", default="", type=str, 
+                        help="Pretrained config name or path if not the same as model_name.")
+    #########################################################
+    # Training parameters
+    #########################################################
+    parser.add_argument("--drop_out", default=0.1, type=float, 
+                        help="Drop out ratio in BERT.")
     #########################################################
     # Model architectures
     #########################################################
     parser.add_argument('-a', '--arch', default='hrnet-w64',
                     help='CNN backbone architecture: hrnet-w64, hrnet, resnet50')
+    parser.add_argument("--num_hidden_layers", default=4, type=int, required=False, 
+                        help="Update model config if given")
+    parser.add_argument("--num_attention_heads", default=4, type=int, required=False, 
+                        help="Update model config if given. Note that the division of "
+                        "hidden_size / num_attention_heads should be in integer.")
     parser.add_argument("--input_feat_dim", default='2051,512,128', type=str, 
                         help="The Image Feature Dimension.")          
     parser.add_argument("--hidden_feat_dim", default='1024,256,128', type=str, 
@@ -120,9 +133,31 @@ def main(args):
         # init three transformer-encoder blocks in a loop
         for i in range(len(output_feat_dim)):
             config_class, model_class = BertConfig, METRO
+            config = config_class.from_pretrained(args.config_name if args.config_name else \
+                                                    args.model_name_or_path)
+            print(type(config))
+            config.output_attentions = False
+            config.hidden_dropout_prob = args.drop_out
+            config.img_feature_dim = input_feat_dim[i]
+            config.output_feature_dim = hidden_feat_dim[i]
+            args.hidden_size = hidden_feat_dim[i]
+            args.intermediate_size = -1
 
+            # update model structure if specified in argments
+            update_params = ['num_hidden_layers', 'hidden_size', 'num_attention_heads', 'intermediate_size']
 
-
+            for idx, param in enumerate(update_params):
+                arg_param = getattr(args, param)
+                config_param = getattr(args, param)
+                if arg_param > 0 and arg_param != config_param:
+                    logger.info("Update config parameter {}: {} -> {}".format(param, config_param, arg_param))
+                    setattr(config, param, arg_param)
+        
+            # init ImageNet pre-trained backbone model
+            assert config.hidden_size % config.num_attention_heads == 0
+            model = model_class(config=config)
+            logger.info("Init model from scratch.")
+            trans_encoder.append(model)
                 
         # init ImageNet pre-trained backbone model
         if args.arch=='hrnet':

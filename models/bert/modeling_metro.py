@@ -13,7 +13,8 @@ class METRO_Encoder(BertPreTrainedModel):
         self.encoder = BertEncoder(config)
         self.pooler = BertPooler(config)
         self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
-    
+        self.img_dim = config.img_feature_dim 
+
         try:
             self.use_img_layernorm = config.use_img_layernorm
         except:
@@ -24,7 +25,7 @@ class METRO_Encoder(BertPreTrainedModel):
         if self.use_img_layernorm:
             self.LayerNorm = LayerNormClass(config.hidden_size, eps=config.img_layer_norm_eps)
 
-        self.applay(self.init_weights)
+        self.apply(self.init_weights)
 
     def _prune_head(self, heads_to_prune):
         """ Prunes heads of the model.
