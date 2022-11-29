@@ -39,7 +39,8 @@ class GazeSeqDataset(Dataset):
             "image":img,
             "head_dir": self.heads[idx],
             "body_dir": self.bodys[idx],
-            "gaze_dir":self.gazes[idx]
+            "gaze_dir": self.gazes[idx],
+            "keypoints": self.keypoints[idx]
         }
 
         return item

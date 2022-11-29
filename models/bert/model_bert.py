@@ -16,9 +16,9 @@ class GAZEBERT_Network(torch.nn.Module):
 
         # extract image feature maps using a CNN backbone
         image_feat = self.backbone(images)
-        image_feat_newview = image_feat.view(batch_size, 2048, -1)
-        image_feat_newview = image_feat_newview.transpose(1,2)
+        #image_feat_newview = image_feat.view(batch_size, 2048, -1)
+        #image_feat_newview = image_feat_newview.transpose(1,2)
 
 
-        return image_feat_newview
+        return image_feat
 

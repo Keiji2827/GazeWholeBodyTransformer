@@ -4,12 +4,14 @@ import argparse
 import os
 import os.path as op
 import torch
-from bert.model_bert import GAZEBERT_Network as GAZEBERT
-from hrnet.config import config as hrnet_config
-from hrnet.config import update_config as hrnet_update_config
-from hrnet.hrnet_cls_net_featmaps import get_cls_net
-from utils.logger import setup_logger
-from utils.miscellaneous import mkdir
+from models.bert.modeling_bert import BertConfig
+from models.bert.modeling_metro import METRO
+from models.bert.model_bert import GAZEBERT_Network as GAZEBERT
+from models.hrnet.config import config as hrnet_config
+from models.hrnet.config import update_config as hrnet_update_config
+from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
+from models.utils.logger import setup_logger
+from models.utils.miscellaneous import mkdir
 
 from PIL import Image
 from torchvision import transforms
@@ -66,6 +68,11 @@ def parse_args():
     #########################################################
     parser.add_argument("--image_file_or_path", default='./data/sample', type=str, 
                         help="test data")
+    #########################################################
+    # Loading/saving checkpoints
+    #########################################################
+    parser.add_argument("--resume_checkpoint", default=None, type=str, required=False,
+                        help="Path to specific checkpoint for resume training.")
 
     parser.add_argument("--output_dir", default='output/', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
@@ -74,10 +81,14 @@ def parse_args():
     #########################################################
     parser.add_argument('-a', '--arch', default='hrnet-w64',
                     help='CNN backbone architecture: hrnet-w64, hrnet, resnet50')
-
+    parser.add_argument("--input_feat_dim", default='2051,512,128', type=str, 
+                        help="The Image Feature Dimension.")          
+    parser.add_argument("--hidden_feat_dim", default='1024,256,128', type=str, 
+                        help="The Image Feature Dimension.")   
     #########################################################
     # Others
     #########################################################
+    parser.add_argument("--run_eval_only", default=False, action='store_true',) 
     parser.add_argument("--device", type=str, default='cuda',
                         help="cuda or cpu")
 
@@ -91,28 +102,47 @@ def main(args):
     mkdir(args.output_dir)
     logger = setup_logger("model Test", args.output_dir, 0)
 
-
     args.device = torch.device(args.device)
 
-    # init ImageNet pre-trained backbone model
-    if args.arch=='hrnet':
-        hrnet_yml = 'models/hrnet/weights/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-        hrnet_checkpoint = './models/hrnet/weights/hrnetv2_w40_imagenet_pretrained.pth'
-        hrnet_update_config(hrnet_config, hrnet_yml)
-        backbone = get_cls_net(hrnet_config, pretrained=hrnet_checkpoint)
-        logger.info('=> loading hrnet-v2-w40 model')
+    # Load model
+    trans_encoder = []
 
-    elif args.arch=='hrnet-w64':
-        hrnet_yaml = 'models/hrnet/weights/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
-        hrnet_checkpoint = 'models/hrnet/weights/hrnetv2_w64_imagenet_pretrained.pth'
-        hrnet_update_config(hrnet_config, hrnet_yaml)
-        backbone = get_cls_net(hrnet_config, pretrained=hrnet_checkpoint)
-        logger.info('=> loading hrnet-v2-w64 model')
+    input_feat_dim = [int(item) for item in args.input_feat_dim.split(',')]
+    hidden_feat_dim = [int(item) for item in args.hidden_feat_dim.split(',')]
+    output_feat_dim = input_feat_dim[1:]+[3]
+
+    if args.run_eval_only==True : 
+        # if only run eval, load checkpoint
+        # not use at 22-11-30
+        logger.info("Evaluation: Loading from checkpoint {}".format(args.resume_checkpoint))
+        _gaze_bert = torch.load(args.resume_checkpoint)
     else:
-        print("=> using pre-trained model '{}'".format(args.arch))
-        backbone = models.__dict__[args.arch](pretrained=True)
-        # remove the last fc layer
-        backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
+        # init three transformer-encoder blocks in a loop
+        for i in range(len(output_feat_dim)):
+            config_class, model_class = BertConfig, METRO
+
+
+
+                
+        # init ImageNet pre-trained backbone model
+        if args.arch=='hrnet':
+            hrnet_yml = 'models/hrnet/weights/cls_hrnet_w40_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+            hrnet_checkpoint = './models/hrnet/weights/hrnetv2_w40_imagenet_pretrained.pth'
+            hrnet_update_config(hrnet_config, hrnet_yml)
+            backbone = get_cls_net(hrnet_config, pretrained=hrnet_checkpoint)
+            logger.info('=> loading hrnet-v2-w40 model')
+
+        elif args.arch=='hrnet-w64':
+            hrnet_yaml = 'models/hrnet/weights/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
+            hrnet_checkpoint = 'models/hrnet/weights/hrnetv2_w64_imagenet_pretrained.pth'
+            hrnet_update_config(hrnet_config, hrnet_yaml)
+            backbone = get_cls_net(hrnet_config, pretrained=hrnet_checkpoint)
+            logger.info('=> loading hrnet-v2-w64 model')
+        else:
+            print("=> using pre-trained model '{}'".format(args.arch))
+            backbone = models.__dict__[args.arch](pretrained=True)
+            # remove the last fc layer
+            backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
 
     backbone_total_param = sum(p.numel() for p in backbone.parameters())
     logger.info("Backbone total parameters: {}".format(backbone_total_param))
