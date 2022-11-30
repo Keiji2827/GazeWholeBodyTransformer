@@ -3,58 +3,46 @@
 import argparse
 import os
 import os.path as op
+import time
+import datetime
+import numpy as np
 import torch
+from torch.utils.data import Subset, DataLoader
 from models.bert.modeling_bert import BertConfig
 from models.bert.modeling_metro import METRO
-from models.bert.model_bert import GAZEBERT_Network as GAZEBERT
+from models.bert.modeling_gabert import GAZEBERT_Network as GAZEBERT
 from models.hrnet.config import config as hrnet_config
 from models.hrnet.config import update_config as hrnet_update_config
 from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
+from models.dataloader.gafa_loader import create_gafa_dataset
 from models.utils.logger import setup_logger
+from models.utils.metric_logger import AverageMeter
 from models.utils.miscellaneous import mkdir
+from models.utils.loss import  compute_basic_cos_loss, compute_kappa_vMF3_loss
 
 from PIL import Image
 from torchvision import transforms
 
-#from dataloader.gafa_loader import create_gafa_dataset
 
-transform = transforms.Compose([           
-                    transforms.Resize(224),
-                    transforms.CenterCrop(224),
-                    transforms.ToTensor(),
-                    transforms.Normalize(
-                        mean=[0.485, 0.456, 0.406],
-                        std=[0.229, 0.224, 0.225])])
+def run(args, train_dataloader, val_dataloader, gaze_model):
 
-transform_visualize = transforms.Compose([           
-                    transforms.Resize(224),
-                    transforms.CenterCrop(224),
-                    transforms.ToTensor()])
+    max_iter = len(train_dataloader)
+    iters_per_epoch = max_iter
+    args.logging_steps = 500
 
+    optimizer = torch.optim.Adam(params=list(gaze_model.parameters()),lr=args.lr,
+                                            betas=(0.9, 0.999), weight_decay=0) 
 
-def run_inference(args, image_list, _gaze_bert):
+    start_training_time = time.time()
+    end = time.time()
+    gaze_model.train()
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    log_losses = AverageMeter()
 
-    _gaze_bert.eval()
-
-    for image_file in image_list:
-        if "pred" not in image_file:
-            print(image_file)
-
-            img = Image.open(image_file)
-            # from torchvision import transforms
-            img_tensor = transform(img)
-            #img_visual = transform_visualize(img)
-
-            batch_imgs = torch.unsqueeze(img_tensor, 0)#.cuda()
-            #batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda()
-
-            output = _gaze_bert(batch_imgs)
-            #output = backbone(batch_imgs)
-            #print(image_file)
-            #print(output)
-            print(output.size())
-
-
+    print(len(train_dataloader))   
+    for iteration, (img, kp) in enumerate(train_dataloader):
+        print(len(img))
 
 
     return
@@ -82,6 +70,9 @@ def parse_args():
     #########################################################
     # Training parameters
     #########################################################
+    parser.add_argument('--lr', "--learning_rate", default=1e-4, type=float, 
+                        help="The initial lr.")
+
     parser.add_argument("--drop_out", default=0.1, type=float, 
                         help="Drop out ratio in BERT.")
     #########################################################
@@ -179,28 +170,36 @@ def main(args):
             # remove the last fc layer
             backbone = torch.nn.Sequential(*list(backbone.children())[:-2])
 
-    backbone_total_param = sum(p.numel() for p in backbone.parameters())
-    logger.info("Backbone total parameters: {}".format(backbone_total_param))
+        trans_encoder = torch.nn.Sequential(*trans_encoder)
+        total_params = sum(p.numel() for p in trans_encoder.parameters())
+        logger.info('Transformers total parameters: {}'.format(total_params))
+        backbone_total_params = sum(p.numel() for p in backbone.parameters())
+        logger.info('Backbone total parameters: {}'.format(backbone_total_params))
 
+        # Initialize GAZEBERT model 
+        _gaze_bert = GAZEBERT(args, config, backbone, trans_encoder)
 
-    # Initialize GAZEBERT model 
-    _gaze_bert = GAZEBERT(args, backbone)
+    _gaze_bert.to(args.device)
+    logger.info("Training parameters %s", args)
 
-
-
-    image_list = []
-
-    if not args.image_file_or_path:
-        raise ValueError("image_file_or_path not specified")
-    elif op.isdir(args.image_file_or_path):
-        for filename in os.listdir(args.image_file_or_path):
-            if filename.endswith(".png") or filename.endswith(".jpg") and "pred" not in filename:
-                image_list.append(args.image_file_or_path+"/"+filename)
+    if args.run_eval_only == True:
+        logger.info("Run eval only\nNot use")
     else:
-        raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
+        logger.info("Run train")
+        exp_names = ["courtyard/004/"]
+        dset = create_gafa_dataset(exp_names=exp_names)
+        train_idx, val_idx = np.arange(0, int(len(dset)*0.9)), np.arange(int(len(dset)*0.9), len(dset))
+        train_dset = Subset(dset, train_idx)
+        val_dset   = Subset(dset, val_idx)
 
-    run_inference(args, image_list, _gaze_bert)
-
+        train_dataloader = DataLoader(
+            train_dset, batch_size=32, num_workers=4, pin_memory=True, shuffle=True
+        )
+        val_dataloader = DataLoader(
+            val_dset, batch_size=32, shuffle=False, num_workers=4, pin_memory=True
+        )
+        
+        run(args, train_dataloader, val_dataloader, _gaze_bert)
 
 
 if __name__ == "__main__":
