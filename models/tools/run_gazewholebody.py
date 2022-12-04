@@ -40,13 +40,76 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
     data_time = AverageMeter()
     log_losses = AverageMeter()
 
-    print(len(train_dataloader))   
-    for iteration, (img, kp) in enumerate(train_dataloader):
-        print(len(img))
+    criterion = torch.nn.MSELoss(reduction='none').cuda(args.device)
+
+    print("length of train_dataloader",len(train_dataloader))   
+    for iteration, batch in enumerate(train_dataloader):
+
+        gaze_model.train()
+        iteration += 1
+        epoch = iteration
+        image = batch["image"]
+        gaze_dir = batch["gaze_dir"]
+        head_dir = batch["head_dir"]
+        keypoints = batch["keypoints"]
+
+        batch_size = image.size()[0]
+        #adjust_learning_rate(optimizer, epoch, args)
+        # Sets the learning rate to the initial LR decayed by x every y epochs
+        #lr = args.lr * (0.1 ** (epoch // (args.num_train_epochs/2.0)))
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = args.lr
+        data_time.update(time.time() - end)
+
+        image = image.cuda(args.device)
+        gaze_dir = gaze_dir.cuda(args.device)
+        head_dir = head_dir.cuda(args.device)
+        keypoints = keypoints.cuda(args.device)
+        
+        # forward-pass
+        pred_gaze = gaze_model(image, gaze_dir, is_train=True)
+
+        #print("size of pred_gaze:",pred_gaze[0])
+        #print("size of gaze_dir:",gaze_dir[0])
+        #print("loss is ", loss_manual)
+        # compute loss function
+        pred_gaze = pred_gaze.reshape(-1, pred_gaze.shape[-1])
+        gaze_dir = gaze_dir.reshape(-1, gaze_dir.shape[-1])
+        cos =  torch.sum(pred_gaze*gaze_dir,dim=-1)
+        cos[cos > 1] = 1
+        cos[cos < -1] = -1
+        loss = 1-cos#criterion(pred_gaze,gaze_dir)
+        #print("loss:",loss)
+        loss = loss.mean()
+        #print("loss:",loss)
+                
+        # update logs
+        log_losses.update(loss.item(), batch_size)
+
+        # back prop
+        optimizer.zero_grad()
+        loss.backward() 
+        optimizer.step()
+
+        batch_time.update(time.time() - end)
+        end = time.time()
+    
+        if(iteration%100==0):
+            #print("iteration:",iteration)
+            eta_seconds = batch_time.avg * (max_iter - iteration)
+            eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+            logger.info(
+                ' '.join(
+                ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}', 'max mem : {memory:.0f}',]
+                ).format(eta=eta_string, ep=epoch, iter=iteration, 
+                    memory=torch.cuda.max_memory_allocated() / 1024.0 / 1024.0) 
+                + "loss:{:.4f}, lr:{:.6f}".format(log_losses.avg, optimizer.param_groups[0]["lr"])
+            )
+            #print("gaze_dir:",gaze_dir)
 
 
-    return
-
+#def run_validate(args, val_datalo)
+            
 
 
 def parse_args():
@@ -70,9 +133,10 @@ def parse_args():
     #########################################################
     # Training parameters
     #########################################################
-    parser.add_argument('--lr', "--learning_rate", default=1e-4, type=float, 
+    parser.add_argument('--lr', "--learning_rate", default=1e-3, type=float, 
                         help="The initial lr.")
-
+    parser.add_argument("--num_train_epochs", default=200, type=int, 
+                        help="Total number of training epochs to perform.")
     parser.add_argument("--drop_out", default=0.1, type=float, 
                         help="Drop out ratio in BERT.")
     #########################################################
@@ -101,7 +165,6 @@ def parse_args():
 
 def main(args):
 
-    print("in main")
     global logger
     mkdir(args.output_dir)
     logger = setup_logger("model Test", args.output_dir, 0)
@@ -114,6 +177,10 @@ def main(args):
     input_feat_dim = [int(item) for item in args.input_feat_dim.split(',')]
     hidden_feat_dim = [int(item) for item in args.hidden_feat_dim.split(',')]
     output_feat_dim = input_feat_dim[1:]+[3]
+
+    print(input_feat_dim)
+    print(hidden_feat_dim)
+    print(output_feat_dim)
 
     if args.run_eval_only==True : 
         # if only run eval, load checkpoint
@@ -180,23 +247,27 @@ def main(args):
         _gaze_bert = GAZEBERT(args, config, backbone, trans_encoder)
 
     _gaze_bert.to(args.device)
+    #if args.device == "cuda":
+    #    _gaze_bert = torch.nn.DataParallel(_gaze_bert)
+
     logger.info("Training parameters %s", args)
 
     if args.run_eval_only == True:
         logger.info("Run eval only\nNot use")
     else:
         logger.info("Run train")
-        exp_names = ["courtyard/004/"]
+        exp_names = ["courtyard/002/","courtyard/003/","courtyard/004/",
+                     "kitchen/1015_4","kitchen/1022_2"]
         dset = create_gafa_dataset(exp_names=exp_names)
         train_idx, val_idx = np.arange(0, int(len(dset)*0.9)), np.arange(int(len(dset)*0.9), len(dset))
         train_dset = Subset(dset, train_idx)
         val_dset   = Subset(dset, val_idx)
 
         train_dataloader = DataLoader(
-            train_dset, batch_size=32, num_workers=4, pin_memory=True, shuffle=True
+            train_dset, batch_size=16, num_workers=4, pin_memory=True, shuffle=True
         )
         val_dataloader = DataLoader(
-            val_dset, batch_size=32, shuffle=False, num_workers=4, pin_memory=True
+            val_dset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True
         )
         
         run(args, train_dataloader, val_dataloader, _gaze_bert)

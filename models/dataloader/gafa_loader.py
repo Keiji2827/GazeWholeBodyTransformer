@@ -56,9 +56,9 @@ class GazeSeqDataset(Dataset):
         img = torch.from_numpy(img.transpose(2,0,1))
         item = {
             "image":img,
-            #"head_dir": self.heads[idx],
+            "head_dir": self.heads[idx],
             #"body_dir": self.bodys[idx],
-            #"gaze_dir": self.gazes[idx],
+            "gaze_dir": self.gazes[idx],
             "keypoints": np.stack(self.keypoints[idx]).copy()
         }
 
@@ -78,7 +78,11 @@ def create_gafa_dataset(exp_names, root_dir='./data/preprocessed'):
 
             if len(dset) == 0:
                 continue
-
             dset_list.append(dset)
 
-    return ConcatDataset(dset_list)
+    print("in create_gafa_dataset")
+    print(dset_list[0][0]["gaze_dir"])
+    print(min(len(d) for d  in dset_list))
+    res = ConcatDataset(dset_list)
+    #print(len(res))
+    return res
