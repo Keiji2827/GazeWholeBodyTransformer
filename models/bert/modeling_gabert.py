@@ -1,6 +1,15 @@
 import torch
 from torch import nn
+from .modeling_bert import BertPreTrainedModel, BertEmbeddings, BertEncoder, BertPooler
 
+class GAZEBERT(BertPreTrainedModel):
+    '''
+    The archtecture of a transformer encoder block we used in GAZEBERT
+    '''
+    def __init__(self, config):
+        super(GAZEBERT, self).__init__(config)
+        self.config = config
+        self.bert = GAZEBERT_Encorder(config)
 
 class GAZEBERT_Network(torch.nn.Module):
 
@@ -9,6 +18,7 @@ class GAZEBERT_Network(torch.nn.Module):
         self.config = config
         self.config.device = args.device
         self.backbone = backbone
+        self.conv_learn_tokens = torch.nn.Conv1d(48,431+14,1)
         #self.trans_encoder = trans_encoder
         self.mlp_layer1 = torch.nn.Linear(48, 1)
         self.mlp_layer2 = torch.nn.Linear(2048, 256)
@@ -24,8 +34,9 @@ class GAZEBERT_Network(torch.nn.Module):
 
         # extract image feature maps using a CNN backbone
         image_feat = self.backbone(images) # [32, 2048, 8 ,6]
-        image_feat_newview = image_feat.view(batch_size, 2048, -1)
-        #image_feat_newview = image_feat_newview.transpose(1,2) # [32, 48, 2048]
+        image_feat_newview  = image_feat.view(batch_size, 2048, -1)
+        image_feat_newview2 = image_feat_newview.transpose(1,2) # [32, 48, 2048]
+        img_tokens = self.conv_learn_tokens(image_feat_newview2)
         #print("size of image_ feat",image_feat_newview.size())
         
         x = self.mlp_layer1(image_feat_newview)
