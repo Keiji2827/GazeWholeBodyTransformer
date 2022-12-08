@@ -133,6 +133,10 @@ def parse_args():
     #########################################################
     # Training parameters
     #########################################################
+    parser.add_argument("--per_gpu_train_batch_size", default=30, type=int, 
+                        help="Batch size per GPU/CPU for training.")
+    parser.add_argument("--per_gpu_eval_batch_size", default=30, type=int, 
+                        help="Batch size per GPU/CPU for evaluation.")
     parser.add_argument('--lr', "--learning_rate", default=1e-3, type=float, 
                         help="The initial lr.")
     parser.add_argument("--num_train_epochs", default=200, type=int, 
@@ -149,6 +153,8 @@ def parse_args():
     parser.add_argument("--num_attention_heads", default=4, type=int, required=False, 
                         help="Update model config if given. Note that the division of "
                         "hidden_size / num_attention_heads should be in integer.")
+    parser.add_argument("--intermediate_size", default=-1, type=int, required=False, 
+                        help="Update model config if given.")
     parser.add_argument("--input_feat_dim", default='2051,512,128', type=str, 
                         help="The Image Feature Dimension.")          
     parser.add_argument("--hidden_feat_dim", default='1024,256,128', type=str, 
