@@ -9,8 +9,8 @@ import numpy as np
 import torch
 from torch.utils.data import Subset, DataLoader
 from models.bert.modeling_bert import BertConfig
-from models.bert.modeling_metro import METRO
-from models.bert.modeling_gabert import GAZEBERT_Network as GAZEBERT
+#from models.bert.modeling_metro import METRO
+from models.bert.modeling_gabert import GAZEBERT_Network, GAZEBERT
 from models.hrnet.config import config as hrnet_config
 from models.hrnet.config import update_config as hrnet_update_config
 from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
@@ -23,6 +23,32 @@ from models.utils.loss import  compute_basic_cos_loss, compute_kappa_vMF3_loss
 from PIL import Image
 from torchvision import transforms
 
+
+class CosLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, outputs, targets):
+        outputs = outputs.reshape(-1, outputs.shape[-1])
+        targets = targets.reshape(-1, targets.shape[-1])
+        cos =  torch.sum(outputs*targets,dim=-1)
+        cos[cos > 1] = 1
+        cos[cos < -1] = -1
+        rad = torch.acos(cos)
+        loss = torch.rad2deg(rad)#0.5*(1-cos)#criterion(pred_gaze,gaze_dir)
+
+        return loss
+
+class MSE(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, outputs, targets):
+        outputs = outputs.reshape(-1, outputs.shape[-1])
+        targets = targets.reshape(-1, targets.shape[-1])
+        loss = ((outputs-targets)**2).mean()
+
+        return loss
 
 def run(args, train_dataloader, val_dataloader, gaze_model):
 
@@ -40,7 +66,10 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
     data_time = AverageMeter()
     log_losses = AverageMeter()
 
-    criterion = torch.nn.MSELoss(reduction='none').cuda(args.device)
+    criterion_mse = torch.nn.MSELoss(reduction='none').cuda(args.device)
+    criterion_gaze = CosLoss().cuda(args.device)
+    criterion_body = CosLoss().cuda(args.device)
+    criterion2 = MSE().cuda(args.device)
 
     print("length of train_dataloader",len(train_dataloader))   
     for iteration, batch in enumerate(train_dataloader):
@@ -51,6 +80,8 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
         image = batch["image"]
         gaze_dir = batch["gaze_dir"]
         head_dir = batch["head_dir"]
+        body_dir = batch["body_dir"]
+        head_pos = batch["head_pos"]
         keypoints = batch["keypoints"]
 
         batch_size = image.size()[0]
@@ -64,25 +95,26 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
         image = image.cuda(args.device)
         gaze_dir = gaze_dir.cuda(args.device)
         head_dir = head_dir.cuda(args.device)
+        body_dir = body_dir.cuda(args.device)
+        head_pos = head_pos.cuda(args.device)
         keypoints = keypoints.cuda(args.device)
-        
-        # forward-pass
-        pred_gaze = gaze_model(image, gaze_dir, is_train=True)
 
-        #print("size of pred_gaze:",pred_gaze[0])
+        # forward-pass
+        #pred_gaze, pred_body, pred_head_pos = gaze_model(image, gaze_dir, is_train=True)
+        pred_head_pos = gaze_model(image, gaze_dir, is_train=True)
+
+        #
         #print("size of gaze_dir:",gaze_dir[0])
         #print("loss is ", loss_manual)
         # compute loss function
-        pred_gaze = pred_gaze.reshape(-1, pred_gaze.shape[-1])
-        gaze_dir = gaze_dir.reshape(-1, gaze_dir.shape[-1])
-        cos =  torch.sum(pred_gaze*gaze_dir,dim=-1)
-        cos[cos > 1] = 1
-        cos[cos < -1] = -1
-        loss = 1-cos#criterion(pred_gaze,gaze_dir)
         #print("loss:",loss)
-        loss = loss.mean()
+        #loss = 0.5*(loss_gaze.mean()+loss_body.mean())
+        #loss0 = criterion_gaze(pred_gaze,gaze_dir).mean()
+        #loss2 = criterion_body(pred_body,body_dir).mean()
+        loss1 = criterion_mse(pred_head_pos,head_pos).mean()
+        #loss2 = criterion2(pred_gaze,gaze_dir).mean()
         #print("loss:",loss)
-                
+        loss = loss1#(loss0 + loss1)*0.5
         # update logs
         log_losses.update(loss.item(), batch_size)
 
@@ -94,7 +126,7 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
         batch_time.update(time.time() - end)
         end = time.time()
     
-        if(iteration%100==0):
+        if(iteration%10==0):
             #print("iteration:",iteration)
             eta_seconds = batch_time.avg * (max_iter - iteration)
             eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
@@ -103,8 +135,10 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
                 ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}', 'max mem : {memory:.0f}',]
                 ).format(eta=eta_string, ep=epoch, iter=iteration, 
                     memory=torch.cuda.max_memory_allocated() / 1024.0 / 1024.0) 
-                + "loss:{:.4f}, lr:{:.6f}".format(log_losses.avg, optimizer.param_groups[0]["lr"])
+                + ":loss:{:.4f}, lr:{:.6f}".format(log_losses.avg, optimizer.param_groups[0]["lr"])
             )
+            print(pred_head_pos[0])
+            print(head_pos[0])
             #print("gaze_dir:",gaze_dir)
 
 
@@ -184,10 +218,6 @@ def main(args):
     hidden_feat_dim = [int(item) for item in args.hidden_feat_dim.split(',')]
     output_feat_dim = input_feat_dim[1:]+[3]
 
-    print(input_feat_dim)
-    print(hidden_feat_dim)
-    print(output_feat_dim)
-
     if args.run_eval_only==True : 
         # if only run eval, load checkpoint
         # not use at 22-11-30
@@ -196,14 +226,14 @@ def main(args):
     else:
         # init three transformer-encoder blocks in a loop
         for i in range(len(output_feat_dim)):
-            config_class, model_class = BertConfig, METRO
+            config_class, model_class = BertConfig, GAZEBERT
             config = config_class.from_pretrained(args.config_name if args.config_name else \
                                                     args.model_name_or_path)
             print(type(config))
             config.output_attentions = False
             config.hidden_dropout_prob = args.drop_out
             config.img_feature_dim = input_feat_dim[i]
-            config.output_feature_dim = hidden_feat_dim[i]
+            config.output_feature_dim = output_feat_dim[i]
             args.hidden_size = hidden_feat_dim[i]
             args.intermediate_size = -1
 
@@ -212,7 +242,7 @@ def main(args):
 
             for idx, param in enumerate(update_params):
                 arg_param = getattr(args, param)
-                config_param = getattr(args, param)
+                config_param = getattr(config, param)
                 if arg_param > 0 and arg_param != config_param:
                     logger.info("Update config parameter {}: {} -> {}".format(param, config_param, arg_param))
                     setattr(config, param, arg_param)
@@ -250,7 +280,7 @@ def main(args):
         logger.info('Backbone total parameters: {}'.format(backbone_total_params))
 
         # Initialize GAZEBERT model 
-        _gaze_bert = GAZEBERT(args, config, backbone, trans_encoder)
+        _gaze_bert = GAZEBERT_Network(args, config, backbone, trans_encoder)
 
     _gaze_bert.to(args.device)
     #if args.device == "cuda":

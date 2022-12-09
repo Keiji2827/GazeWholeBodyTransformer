@@ -57,8 +57,9 @@ class GazeSeqDataset(Dataset):
         item = {
             "image":img,
             "head_dir": self.heads[idx],
-            #"body_dir": self.bodys[idx],
+            "body_dir": self.bodys[idx],
             "gaze_dir": self.gazes[idx],
+            "head_pos": self.head_pos[idx],
             "keypoints": np.stack(self.keypoints[idx]).copy()
         }
 
@@ -81,7 +82,7 @@ def create_gafa_dataset(exp_names, root_dir='./data/preprocessed'):
             dset_list.append(dset)
 
     print("in create_gafa_dataset")
-    print(dset_list[0][0]["gaze_dir"])
+    #print(dset_list[0][0]["gaze_dir"])
     print(min(len(d) for d  in dset_list))
     res = ConcatDataset(dset_list)
     #print(len(res))

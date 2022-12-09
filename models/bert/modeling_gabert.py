@@ -1,13 +1,14 @@
 import torch
 from torch import nn
+from .modeling_bert import BertLayerNorm as LayerNormClass
 from .modeling_bert import BertPreTrainedModel, BertEmbeddings, BertEncoder, BertPooler
 
 
 
 
-class GAZEBERT_Encorder(BertPreTrainedModel):
+class GAZEBERT_Encoder(BertPreTrainedModel):
     def __init__(self, config):
-        super(METRO_Encoder, self).__init__(config)
+        super(GAZEBERT_Encoder, self).__init__(config)
         self.config = config
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)
@@ -21,6 +22,7 @@ class GAZEBERT_Encorder(BertPreTrainedModel):
             self.use_img_layernorm = None
 
         self.img_embedding = nn.Linear(self.img_dim, self.config.hidden_size, bias=True)
+        #print("GAZEBERT Encoder",self.img_dim, self.config.hidden_size)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         if self.use_img_layernorm:
             self.LayerNorm = LayerNormClass(config.hidden_size, eps=config.img_layer_norm_eps)
@@ -76,6 +78,7 @@ class GAZEBERT_Encorder(BertPreTrainedModel):
             head_mask = [None] * self.config.num_hidden_layers
 
         # Project input token features to have spcified hidden size
+        #print("img_feats", img_feats.shape)
         img_embedding_output = self.img_embedding(img_feats)
 
         # We empirically observe that adding an additional learnable position embedding leads to more stable training
@@ -108,8 +111,9 @@ class GAZEBERT(BertPreTrainedModel):
     def __init__(self, config):
         super(GAZEBERT, self).__init__(config)
         self.config = config
-        self.bert = GAZEBERT_Encorder(config)
+        self.bert = GAZEBERT_Encoder(config)
         self.cls_head = nn.Linear(config.hidden_size, self.config.output_feature_dim)
+        #print(config.img_feature_dim, self.config.output_feature_dim)
         self.residual = nn.Linear(config.img_feature_dim, self.config.output_feature_dim)
         self.apply(self.init_weights)
 
@@ -127,7 +131,9 @@ class GAZEBERT(BertPreTrainedModel):
         pred_score = self.cls_head(predictions[0])
         res_img_feats = self.residual(img_feats)
         pred_score = pred_score + res_img_feats
-
+        #print("prediction",predictions[0].shape)
+        #print("res_img_feats",res_img_feats.shape)
+        #print("pred_score",pred_score.shape)
         if self.config.output_attentions and self.config.output_hidden_states:
             return pred_score, predictions[1], predictions[-1]
         else:
@@ -142,21 +148,15 @@ class GAZEBERT_Network(torch.nn.Module):
         self.backbone = backbone
         #self.conv_learn_tokens = torch.nn.Conv1d(48,431+14,1)
         self.trans_encoder = trans_encoder
-        self.conv_learn_tokens = torch.nn.Conv1d(48, 1)
-
-        self.mlp_layer1 = torch.nn.Linear(48, 1)
-        self.mlp_layer2 = torch.nn.Linear(2048, 256)
-        self.mlp_layer3 = torch.nn.Linear(256, 3)
-
-        self.mlp1 = torch.nn.Linear(3,256)
-        self.mlp2 = torch.nn.Linear(256,3)
+        self.conv_learn_tokens = torch.nn.Conv1d(48,1, 1)
 
 
     def forward(self, images,test, meta_masks=None, is_train=False):
         batch_size = images.size(0)
         #print("batch size", batch_size)
 
-        ref_gaze = [0,0,1]
+        ref_gaze = torch.tensor([[[0,1,0]]], dtype=torch.float32, device=self.config.device)
+        ref_gaze = ref_gaze.expand(batch_size, -1, -1)
 
         # extract image feature maps using a CNN backbone
         image_feat = self.backbone(images) # [32, 2048, 8 ,6]
@@ -164,12 +164,14 @@ class GAZEBERT_Network(torch.nn.Module):
         image_feat_newview2 = image_feat_newview.transpose(1,2) # [32, 48, 2048]
         img_tokens = self.conv_learn_tokens(image_feat_newview2) # [32,1,2048]
         #print("size of image_ feat",image_feat_newview.size())
+        #print("shpe",ref_gaze.shape, img_tokens.shape)
         features = torch.cat([ref_gaze, img_tokens], dim=2) # [32, 1, 2051]
 
+        '''
         if is_train==True:
-            constant_tensor = torch.ones_like(features).cuda(self.config_device)*0.01
+            constant_tensor = torch.ones_like(features).cuda(self.config.device)*0.01
             features = features*meta_masks + constant_tensor*(1-meta_masks)
-
+        '''
         # forward pass
         if self.config.output_attentions==True:
             features, all_hidden_states, att = self.trans_encoder(features)
@@ -188,6 +190,7 @@ class GAZEBERT_Network(torch.nn.Module):
         #x = self.mlp1(test)
         #x = self.mlp2(x)
         '''
-        
-        return features
+        #pred_gaze = features[:,:1,:]
+        #pred_body = features[:,1:,:]
+        return features#pred_gaze, pred_body
 
