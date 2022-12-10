@@ -139,7 +139,7 @@ class GAZEBERT(BertPreTrainedModel):
         else:
             return pred_score
 
-class GAZEBERT_Network(torch.nn.Module):
+class _GAZEBERT_Network(torch.nn.Module):
 
     def __init__(self, args, config, backbone, trans_encoder):
         super(GAZEBERT_Network, self).__init__()
@@ -233,3 +233,22 @@ class GAZEBERT_Network(torch.nn.Module):
         #pred_body = features[:,1:,:]
         return features#pred_gaze, pred_body
 
+
+
+
+class GAZEFROMBODY(torch.nn.Module):
+
+    def __init__(self, args, bert):
+        self.bert = bert
+        self.encoder = torch.nn.Linear(25,1)
+
+    def forward(self, images, smpl, mesh_sampler, meta_masks, is_train=False):
+        batch_size = image.size(0)
+        self.bert.eval()
+
+        # metro inference
+        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices 
+        = self.bert(images, smpl, mesh_sampler)
+
+
+        return pred_3d_joints

@@ -8,9 +8,10 @@ import datetime
 import numpy as np
 import torch
 from torch.utils.data import Subset, DataLoader
-from models.bert.modeling_bert import BertConfig
-#from models.bert.modeling_metro import METRO
-from models.bert.modeling_gabert import GAZEBERT_Network, GAZEBERT
+from models.bert.modeling_bert import BertConfig, METRO
+from metro.modeling.bert import METRO_Body_Network as METRO_Network
+from models.bert.modeling_gabert import GAZEFROMBODY
+from model.smpl._smpl import SMPL, Mesh
 from models.hrnet.config import config as hrnet_config
 from models.hrnet.config import update_config as hrnet_update_config
 from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
@@ -70,6 +71,9 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
     criterion_gaze = CosLoss().cuda(args.device)
     criterion_body = CosLoss().cuda(args.device)
     criterion2 = MSE().cuda(args.device)
+
+
+    return
 
     print("length of train_dataloader",len(train_dataloader))   
     for iteration, batch in enumerate(train_dataloader):
@@ -162,7 +166,7 @@ def parse_args():
     #########################################################
     parser.add_argument("--model_name_or_path", default='models/bert/bert-base-uncased/', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
-    parser.add_argument("--resume_checkpoint", default=None, type=str, required=False,
+    parser.add_argument("--resume_checkpoint", default='models/weights/metro/metro_3dpw_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for resume training.")
     parser.add_argument("--output_dir", default='output/', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
@@ -215,6 +219,11 @@ def main(args):
 
     args.device = torch.device(args.device)
 
+    # Mesh and SMPL utils
+    # from metro.modeling._smpl import SMPL, Mesh
+    mesh_smpl = SMPL().to(args.device)
+    mesh_sampler = Mesh()
+
     # Load model
     trans_encoder = []
 
@@ -222,18 +231,18 @@ def main(args):
     hidden_feat_dim = [int(item) for item in args.hidden_feat_dim.split(',')]
     output_feat_dim = input_feat_dim[1:]+[3]
 
-    if args.run_eval_only==True : 
+    if args.run_eval_only==True and args.resume_checkpoint!=None and args.resume_checkpoint!='None' and 'state_dict' not in args.resume_checkpoint:
         # if only run eval, load checkpoint
-        # not use at 22-11-30
         logger.info("Evaluation: Loading from checkpoint {}".format(args.resume_checkpoint))
-        _gaze_bert = torch.load(args.resume_checkpoint)
+        _metro_network = torch.load(args.resume_checkpoint)
     else:
         # init three transformer-encoder blocks in a loop
         for i in range(len(output_feat_dim)):
-            config_class, model_class = BertConfig, GAZEBERT
-            config = config_class.from_pretrained(args.config_name if args.config_name else \
-                                                    args.model_name_or_path)
-            print(type(config))
+            config_class, model_class = BertConfig, METRO
+            #config = config_class.from_pretrained(args.config_name if args.config_name else \
+            #                                        args.model_name_or_path)
+            config = config_class.from_pretrained(args.model_name_or_path)
+
             config.output_attentions = False
             config.hidden_dropout_prob = args.drop_out
             config.img_feature_dim = input_feat_dim[i]
@@ -284,11 +293,18 @@ def main(args):
         logger.info('Backbone total parameters: {}'.format(backbone_total_params))
 
         # Initialize GAZEBERT model 
-        _gaze_bert = GAZEBERT_Network(args, config, backbone, trans_encoder)
+        _metro_network = METRO_Network(args, config, backbone, trans_encoder)
 
-    _gaze_bert.to(args.device)
+        logger.info("Loading state dict from checkpoint {}".format(args.resume_checkpoint))
+        cpu_device = torch.device('cpu')
+        state_dict = torch.load(args.resume_checkpoint, map_location=cpu_device)
+        _metro_network.load_state_dict(state_dict, strict=False)
+        del state_dict
+
+    _metro_network.to(args.device)
     #if args.device == "cuda":
     #    _gaze_bert = torch.nn.DataParallel(_gaze_bert)
+    _gaze_bert = GAZEFROMBODY(args, _metro_network)
 
     logger.info("Training parameters %s", args)
 
@@ -311,6 +327,7 @@ def main(args):
         )
         
         run(args, train_dataloader, val_dataloader, _gaze_bert)
+
 
 
 if __name__ == "__main__":
