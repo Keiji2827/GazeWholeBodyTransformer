@@ -148,24 +148,61 @@ class GAZEBERT_Network(torch.nn.Module):
         self.backbone = backbone
         #self.conv_learn_tokens = torch.nn.Conv1d(48,431+14,1)
         self.trans_encoder = trans_encoder
-        self.conv_learn_tokens = torch.nn.Conv1d(48,1, 1)
+        self.conv_learn_tokens_key = torch.nn.Conv1d(48,4, 1)
+        self.conv_learn_tokens = torch.nn.Conv1d(48,25, 1)
 
 
     def forward(self, images,test, meta_masks=None, is_train=False):
         batch_size = images.size(0)
         #print("batch size", batch_size)
 
-        ref_gaze = torch.tensor([[[0,1,0]]], dtype=torch.float32, device=self.config.device)
+        ref_gaze = torch.tensor([[[2.0150e+03, 5.9936e+02, 1.5194e-01],
+        [2.0149e+03, 7.0444e+02, 4.6225e-01],
+        [2.0148e+03, 6.2968e+02, 7.8736e-01],
+        [1.8801e+03, 7.3423e+02, 7.8699e-01],
+        [1.7753e+03, 8.0897e+02, 8.9718e-01],
+        [2.0150e+03, 7.5675e+02, 7.8167e-02],
+        [2.0087e+03, 9.2089e+02, 0.0000e+00],
+        [1.8618e+03, 1.0502e+03, 0.0000e+00],
+        [1.8349e+03, 9.2160e+02, 8.1921e-01],
+        [1.8124e+03, 8.8403e+02, 7.6598e-01],
+        [1.7074e+03, 1.0488e+03, 8.7080e-01],
+        [1.6329e+03, 1.1836e+03, 8.1677e-01],
+        [1.8725e+03, 9.5136e+02, 7.5414e-01],
+        [1.7301e+03, 1.0938e+03, 8.2855e-01],
+        [1.6103e+03, 1.2584e+03, 8.0372e-01],
+        [2.0149e+03, 5.8454e+02, 0.0000e+00],
+        [2.0149e+03, 5.7337e+02, 0.0000e+00],
+        [2.0149e+03, 6.1060e+02, 0.0000e+00],
+        [2.0150e+03, 6.4670e+02, 0.0000e+00],
+        [1.5355e+03, 1.2435e+03, 7.4256e-01],
+        [1.5580e+03, 1.2735e+03, 7.0091e-01],
+        [1.6177e+03, 1.2809e+03, 7.8648e-01],
+        [1.5579e+03, 1.1689e+03, 6.9223e-01],
+        [1.5729e+03, 1.1684e+03, 6.7756e-01],
+        [1.6401e+03, 1.2133e+03, 4.8260e-01]
+            ]]
+            , dtype=torch.float32, device=self.config.device)
         ref_gaze = ref_gaze.expand(batch_size, -1, -1)
+        ref_pose = torch.tensor([[[2.0150e+03, 5.9936e+02, 1.5194e-01],
+        [2.0149e+03, 7.0444e+02, 4.6225e-01],
+        [2.0148e+03, 6.2968e+02, 7.8736e-01],
+        [1.6401e+03, 1.2133e+03, 4.8260e-01]
+        ]]
+        , dtype=torch.float32, device=self.config.device)
+        ref_pose = ref_pose.expand(batch_size, -1, -1)
 
         # extract image feature maps using a CNN backbone
         image_feat = self.backbone(images) # [32, 2048, 8 ,6]
         image_feat_newview  = image_feat.view(batch_size, 2048, -1)
         image_feat_newview2 = image_feat_newview.transpose(1,2) # [32, 48, 2048]
         img_tokens = self.conv_learn_tokens(image_feat_newview2) # [32,1,2048]
+        img_tokens_key = self.conv_learn_tokens_key(image_feat_newview2) # [32,1,2048]
         #print("size of image_ feat",image_feat_newview.size())
         #print("shpe",ref_gaze.shape, img_tokens.shape)
+        #features = torch.cat([ref_pose, img_tokens_key], dim=2) # [32, 1, 2051]
         features = torch.cat([ref_gaze, img_tokens], dim=2) # [32, 1, 2051]
+        #print(features.shape)
 
         '''
         if is_train==True:
@@ -190,6 +227,8 @@ class GAZEBERT_Network(torch.nn.Module):
         #x = self.mlp1(test)
         #x = self.mlp2(x)
         '''
+        #print(features.shape)
+
         #pred_gaze = features[:,:1,:]
         #pred_body = features[:,1:,:]
         return features#pred_gaze, pred_body

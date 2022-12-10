@@ -97,11 +97,15 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
         head_dir = head_dir.cuda(args.device)
         body_dir = body_dir.cuda(args.device)
         head_pos = head_pos.cuda(args.device)
-        keypoints = keypoints.cuda(args.device)
+        keypoints = keypoints.float().cuda(args.device)
 
         # forward-pass
         #pred_gaze, pred_body, pred_head_pos = gaze_model(image, gaze_dir, is_train=True)
-        pred_head_pos = gaze_model(image, gaze_dir, is_train=True)
+        #pred_gaze = gaze_model(image, gaze_dir, is_train=True)
+        pred_keypoints = gaze_model(image, gaze_dir, is_train=True)
+        #print(pred_keypoints.dtype)
+        #print(gaze_dir.shape)
+        #print(pred_keypoints.shape)
 
         #
         #print("size of gaze_dir:",gaze_dir[0])
@@ -110,8 +114,8 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
         #print("loss:",loss)
         #loss = 0.5*(loss_gaze.mean()+loss_body.mean())
         #loss0 = criterion_gaze(pred_gaze,gaze_dir).mean()
-        #loss2 = criterion_body(pred_body,body_dir).mean()
-        loss1 = criterion_mse(pred_head_pos,head_pos).mean()
+        #loss1 = criterion_body(pred_gaze,body_dir).mean()
+        loss1 = criterion_mse(pred_keypoints,keypoints).mean()
         #loss2 = criterion2(pred_gaze,gaze_dir).mean()
         #print("loss:",loss)
         loss = loss1#(loss0 + loss1)*0.5
@@ -137,8 +141,8 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
                     memory=torch.cuda.max_memory_allocated() / 1024.0 / 1024.0) 
                 + ":loss:{:.4f}, lr:{:.6f}".format(log_losses.avg, optimizer.param_groups[0]["lr"])
             )
-            print(pred_head_pos[0])
-            print(head_pos[0])
+            #print(pred_head_pos[0])
+            #print(head_pos[0])
             #print("gaze_dir:",gaze_dir)
 
 
