@@ -8,10 +8,11 @@ import datetime
 import numpy as np
 import torch
 from torch.utils.data import Subset, DataLoader
-from models.bert.modeling_bert import BertConfig, METRO
-from metro.modeling.bert import METRO_Body_Network as METRO_Network
+from models.bert.modeling_bert import BertConfig
+from models.bert.modeling_metro import METRO_Body_Network as METRO_Network
+from models.bert.modeling_metro import METRO
 from models.bert.modeling_gabert import GAZEFROMBODY
-from model.smpl._smpl import SMPL, Mesh
+from models.smpl._smpl import SMPL, Mesh
 from models.hrnet.config import config as hrnet_config
 from models.hrnet.config import update_config as hrnet_update_config
 from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
@@ -23,6 +24,15 @@ from models.utils.loss import  compute_basic_cos_loss, compute_kappa_vMF3_loss
 
 from PIL import Image
 from torchvision import transforms
+
+
+transform = transforms.Compose([           
+                    transforms.Resize(224),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225])])
 
 
 class CosLoss(torch.nn.Module):
@@ -51,7 +61,7 @@ class MSE(torch.nn.Module):
 
         return loss
 
-def run(args, train_dataloader, val_dataloader, gaze_model):
+def run(args, train_dataloader, val_dataloader, gaze_model, smpl, mesh_sampler):
 
     max_iter = len(train_dataloader)
     iters_per_epoch = max_iter
@@ -72,9 +82,6 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
     criterion_body = CosLoss().cuda(args.device)
     criterion2 = MSE().cuda(args.device)
 
-
-    return
-
     print("length of train_dataloader",len(train_dataloader))   
     for iteration, batch in enumerate(train_dataloader):
 
@@ -88,7 +95,13 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
         head_pos = batch["head_pos"]
         keypoints = batch["keypoints"]
 
-        batch_size = image.size()[0]
+        #img = Image.open(image)
+        # from torchvision import transforms
+        #img_tensor = transform(image)
+        # 指定した位置にサイズ1の次元を挿入する unsqeeze()
+        #batch_imgs = torch.unsqueeze(img_tensor, 0).cuda()        
+
+        #batch_size = image.size()[0]
         #adjust_learning_rate(optimizer, epoch, args)
         # Sets the learning rate to the initial LR decayed by x every y epochs
         #lr = args.lr * (0.1 ** (epoch // (args.num_train_epochs/2.0)))
@@ -104,13 +117,12 @@ def run(args, train_dataloader, val_dataloader, gaze_model):
         keypoints = keypoints.float().cuda(args.device)
 
         # forward-pass
-        #pred_gaze, pred_body, pred_head_pos = gaze_model(image, gaze_dir, is_train=True)
-        #pred_gaze = gaze_model(image, gaze_dir, is_train=True)
-        pred_keypoints = gaze_model(image, gaze_dir, is_train=True)
+        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices = gaze_model(image, smpl, mesh_sampler)
+        #pred = gaze_model(image, smpl, mesh_sampler, is_train=True)
         #print(pred_keypoints.dtype)
         #print(gaze_dir.shape)
         #print(pred_keypoints.shape)
-
+        return
         #
         #print("size of gaze_dir:",gaze_dir[0])
         #print("loss is ", loss_manual)
@@ -293,7 +305,7 @@ def main(args):
         logger.info('Backbone total parameters: {}'.format(backbone_total_params))
 
         # Initialize GAZEBERT model 
-        _metro_network = METRO_Network(args, config, backbone, trans_encoder)
+        _metro_network = METRO_Network(args, config, backbone, trans_encoder, mesh_sampler)
 
         logger.info("Loading state dict from checkpoint {}".format(args.resume_checkpoint))
         cpu_device = torch.device('cpu')
@@ -305,6 +317,7 @@ def main(args):
     #if args.device == "cuda":
     #    _gaze_bert = torch.nn.DataParallel(_gaze_bert)
     _gaze_bert = GAZEFROMBODY(args, _metro_network)
+    _gaze_bert.to(args.device)
 
     logger.info("Training parameters %s", args)
 
@@ -326,7 +339,7 @@ def main(args):
             val_dset, batch_size=1, shuffle=False, num_workers=4, pin_memory=True
         )
         
-        run(args, train_dataloader, val_dataloader, _gaze_bert)
+        run(args, train_dataloader, val_dataloader, _metro_network, mesh_smpl, mesh_sampler)
 
 
 

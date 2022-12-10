@@ -5,6 +5,16 @@ import albumentations as A
 import numpy as np
 import torch
 from torch.utils.data import Dataset, ConcatDataset
+from PIL import Image
+from torchvision import transforms
+
+transform = transforms.Compose([           
+                    transforms.Resize(224),
+                    transforms.CenterCrop(224),
+                    transforms.ToTensor(),
+                    transforms.Normalize(
+                        mean=[0.485, 0.456, 0.406],
+                        std=[0.229, 0.224, 0.225])])
 
 class GazeSeqDataset(Dataset):
     def __init__(self, video_path):
@@ -51,8 +61,12 @@ class GazeSeqDataset(Dataset):
 
         idx = self.valid_index[idx]
         img_path = os.path.join(self.video_path, f"{self.img_index[idx]:06}.jpg")
+        img_ = Image.open(img_path)
+        img_ = transform(img_)
+        img_ = torch.unsqueeze(img_, 0)#.cuda()
         img = cv2.imread(img_path)[:,:,::-1]
         img = self.normalize(image=img)['image']
+        img = cv2.resize(img, dsize=(224,224))
         img = torch.from_numpy(img.transpose(2,0,1))
         item = {
             "image":img,
@@ -82,8 +96,6 @@ def create_gafa_dataset(exp_names, root_dir='./data/preprocessed'):
             dset_list.append(dset)
 
     print("in create_gafa_dataset")
-    #print(dset_list[0][0]["gaze_dir"])
-    print(min(len(d) for d  in dset_list))
+    #print(min(len(d) for d  in dset_list))
     res = ConcatDataset(dset_list)
-    #print(len(res))
     return res

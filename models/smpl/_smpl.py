@@ -15,7 +15,7 @@ except ImportError:
     import pickle
 
 from metro.utils.geometric_layers import rodrigues
-import metro.modeling.data.config as cfg
+import models.data.config as cfg
 
 class SMPL(nn.Module):
 
