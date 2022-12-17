@@ -241,15 +241,53 @@ class GAZEFROMBODY(torch.nn.Module):
     def __init__(self, args, bert):
         super(GAZEFROMBODY, self).__init__()
         self.bert = bert
-        self.encoder = torch.nn.Linear(25,1)
+        self.encoder1 = torch.nn.Linear(14,1024)
+        self.encoder2 = torch.nn.Linear(1024,90)
+        self.encoder3 = torch.nn.Linear(3*90,1)
+        self.flatten  = torch.nn.Flatten()
+        self.encoder13 = torch.nn.Linear(3,250)
+        self.encoder31 = torch.nn.Linear(250,3)
 
-    def forward(self, images, smpl, mesh_sampler, is_train=False):
+        self.test1 = torch.nn.Linear(3,250)
+        self.test2 = torch.nn.Linear(250,3)
+
+
+
+    def forward(self, images, smpl, mesh_sampler, test,is_train=False):
         batch_size = images.size(0)
         self.bert.eval()
 
         # metro inference
-        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices = self.bert(images, smpl, mesh_sampler)
+        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att = self.bert(images, smpl, mesh_sampler)
+        #print("shape of pred_3d_joints.", pred_3d_joints.shape) # [1, 14, 3]
 
-        print("shape of 3d joints.", pred_3d_joints.shape)
+        pred_pelvis = (pred_3d_joints[:, 2,:] + pred_3d_joints[:, 3,:]) / 2
+        pred_center = (pred_3d_joints[:, 8,:] + pred_3d_joints[:, 9,:]) / 2
+        pred_center = pred_3d_joints[:, 13,:] - pred_center
+        #print(pred_center)
+        #print(test)
+        #print("--")
+        #pred_center = pred_center.squeeze()
+        x = self.encoder13(pred_center)
+        #print(pred_center.shape)
+        x = self.encoder31(x)
+        return x
 
-        return pred_3d_joints
+
+        #print("pred_center:",pred_center)
+        pred_keypoints_3d = pred_3d_joints - pred_center[:, None, :]
+        #print("shape of pred_3d_joints.", pred_keypoints_3d.shape) # [1, 14, 3]
+        x = pred_keypoints_3d.transpose(1,2)
+        x = self.encoder1(x)
+        x = self.encoder2(x)
+        x = self.flatten(x)
+        x = self.encoder3(x)
+
+        #x = x.squeeze(2)#transpose(2,1)
+        #print("shape of x.", x.shape) # [1, 14, 3]
+        return x
+
+        y = self.test1(test)
+        y = self.test2(y)
+        #return y
+

@@ -85,7 +85,7 @@ def run(args, train_dataloader, val_dataloader, gaze_model, smpl, mesh_sampler):
     print("length of train_dataloader",len(train_dataloader))   
     for iteration, batch in enumerate(train_dataloader):
 
-        gaze_model.train()
+        gaze_model.eval()
         iteration += 1
         epoch = iteration
         image = batch["image"]
@@ -226,10 +226,15 @@ def parse_args():
 def main(args):
 
     global logger
+
+    # Setup CUDA, GPU & distributed training
+    args.num_gpus = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1
+    # 並列処理の設定
+    args.distributed = args.num_gpus > 1
+    args.device = torch.device(args.device)
+
     mkdir(args.output_dir)
     logger = setup_logger("model Test", args.output_dir, 0)
-
-    args.device = torch.device(args.device)
 
     # Mesh and SMPL utils
     # from metro.modeling._smpl import SMPL, Mesh
@@ -313,11 +318,21 @@ def main(args):
         _metro_network.load_state_dict(state_dict, strict=False)
         del state_dict
 
+    # update configs to enable attention outputs
+    setattr(_metro_network.trans_encoder[-1].config,'output_attentions', True)
+    setattr(_metro_network.trans_encoder[-1].config,'output_hidden_states', True)
+    _metro_network.trans_encoder[-1].bert.encoder.output_attentions = True
+    _metro_network.trans_encoder[-1].bert.encoder.output_hidden_states =  True
+    for iter_layer in range(4):
+        _metro_network.trans_encoder[-1].bert.encoder.layer[iter_layer].attention.self.output_attentions = True
+    for inter_block in range(3):
+        setattr(_metro_network.trans_encoder[-1].config,'device', args.device)
+
     _metro_network.to(args.device)
     #if args.device == "cuda":
     #    _gaze_bert = torch.nn.DataParallel(_gaze_bert)
-    _gaze_bert = GAZEFROMBODY(args, _metro_network)
-    _gaze_bert.to(args.device)
+    #_gaze_bert = GAZEFROMBODY(args, _metro_network)
+    #_gaze_bert.to(args.device)
 
     logger.info("Training parameters %s", args)
 

@@ -61,15 +61,16 @@ class GazeSeqDataset(Dataset):
 
         idx = self.valid_index[idx]
         img_path = os.path.join(self.video_path, f"{self.img_index[idx]:06}.jpg")
+        #print(img_path)
         img_ = Image.open(img_path)
         img_ = transform(img_)
-        img_ = torch.unsqueeze(img_, 0)#.cuda()
+        #img_ = torch.unsqueeze(img_, 0)#.cuda()
         img = cv2.imread(img_path)[:,:,::-1]
         img = self.normalize(image=img)['image']
         img = cv2.resize(img, dsize=(224,224))
         img = torch.from_numpy(img.transpose(2,0,1))
         item = {
-            "image":img,
+            "image":img_,
             "head_dir": self.heads[idx],
             "body_dir": self.bodys[idx],
             "gaze_dir": self.gazes[idx],
