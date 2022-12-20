@@ -96,6 +96,7 @@ def run(args, train_dataloader, val_dataloader, _metro_network, smpl, mesh_sampl
 
             iteration += 1
             epoch = iteration
+            _metro_network.train()
 
             image = batch["image"].cuda(args.device)
             gaze_dir = batch["gaze_dir"].cuda(args.device)
@@ -118,7 +119,7 @@ def run(args, train_dataloader, val_dataloader, _metro_network, smpl, mesh_sampl
             #print("gaze_dir:",gaze_dir)
 
             # forward-pass
-            direction = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            direction = _metro_network(batch_imgs, smpl, mesh_sampler, head_dir)
             #print(direction.shape)
 
             loss = criterion_mse(direction,gaze_dir).mean()
@@ -146,8 +147,47 @@ def run(args, train_dataloader, val_dataloader, _metro_network, smpl, mesh_sampl
                     + ":loss:{:.4f}, lr:{:.6f}".format(log_losses.avg, optimizer.param_groups[0]["lr"])
                 )
         
+            if(iteration % 400 == 0):
+                val = run_validate(args, val_dataloader, 
+                                    _metro_network, 
+                                    criterion_mse,
+                                    smpl,
+                                    mesh_sampler)
+                print("val:", val)
+
+def run_validate(args, val_dataloader, _metro_network, criterion_mse, smpl,mesh_sampler):
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    mse = AverageMeter()
+
+    _metro_network.eval()
+    smpl.eval()
+
+    with torch.no_grad():        
+        for iteration, batch in enumerate(val_dataloader):
+            iteration += 1
+            epoch = iteration
+
+            image = batch["image"].cuda(args.device)
+            gaze_dir = batch["gaze_dir"].cuda(args.device)
+
+            batch_imgs = image
+            batch_size = image.size(0)
+
+            # forward-pass
+            direction = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            #print(direction.shape)
+
+            loss = criterion_mse(direction,gaze_dir).mean()
+
+            # update logs
+            mse.update(loss.item(), batch_size)
+
+            if (iteration > 1000):
+                break
 
 
+    return mse.avg
 
 
 def run_inference(args, image_list, _metro_network, smpl, mesh_sampler):
@@ -234,7 +274,7 @@ def parse_args():
                         help="Batch size per GPU/CPU for training.")
     parser.add_argument("--per_gpu_eval_batch_size", default=30, type=int, 
                         help="Batch size per GPU/CPU for evaluation.")
-    parser.add_argument('--lr', "--learning_rate", default=1e-5, type=float, 
+    parser.add_argument('--lr', "--learning_rate", default=1e-4, type=float, 
                         help="The initial lr.")
     parser.add_argument("--num_train_epochs", default=200, type=int, 
                         help="Total number of training epochs to perform.")
@@ -440,10 +480,10 @@ def main(args):
     else:
         logger.info("Run train")
         exp_names = ["courtyard/002/","courtyard/003/","courtyard/004/"
-                    #,"kitchen/1015_4","kitchen/1022_2","kitchen/1022_4",
-                    #,"lab/1013_1","lab/1013_2","lab/1014_1",
-                    #,"library/1026_3","library/1028_2","library/1028_5","library/1029_2"
-                    # 
+                    ,"kitchen/1015_4","kitchen/1022_2","kitchen/1022_4"
+                    ,"lab/1013_1","lab/1013_2","lab/1014_1"
+                    ,"library/1026_3","library/1028_2","library/1028_5","library/1029_2"
+                     
                     ]
         dset = create_gafa_dataset(exp_names=exp_names)
         #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
