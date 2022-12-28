@@ -14,11 +14,8 @@ class GAZEFROMBODY(torch.nn.Module):
         self.encoder2 = torch.nn.Linear(250,3)
         self.encoder3 = torch.nn.Linear(3*90,1)
         self.flatten  = torch.nn.Flatten()
-        self.encoder13 = torch.nn.Linear(3,250)
-        self.encoder31 = torch.nn.Linear(250,3)
-
-        self.test1 = torch.nn.Linear(3,250)
-        self.test2 = torch.nn.Linear(250,3)
+        self.feat_mlp1 = torch.nn.Linear(2048*7*7, 64)
+        self.feat_mlp2 = torch.nn.Linear(64, 3)
 
 
 
@@ -28,7 +25,7 @@ class GAZEFROMBODY(torch.nn.Module):
         To4joints = [ 8, 9, 13]
 
         # metro inference
-        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att = self.bert(images, smpl, mesh_sampler)
+        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att, image_feat_newview = self.bert(images, smpl, mesh_sampler)
         #print("shape of pred_3d_joints.", pred_3d_joints.shape) # [1, 14, 3]
 
         pred_head = pred_3d_joints[:, 9,:]
@@ -42,8 +39,11 @@ class GAZEFROMBODY(torch.nn.Module):
         #x = self.encoder31(x)
         #return x
 
+        feat_dir = self.flatten(image_feat_newview)
+        feat_dir = self.feat_mlp1(feat_dir)
+        feat_dir = self.feat_mlp2(feat_dir)
+        #print(feat_dir.size())
 
-        #print("pred_center:",pred_center)
         pred_3d_joints = pred_3d_joints - pred_head[:, None, :]
         pred_3d_joints = pred_3d_joints[:,[7,10,13],:]
         #print("shape of pred_3d_joints.", pred_keypoints_3d.shape) # [1, 14, 3]
@@ -51,14 +51,11 @@ class GAZEFROMBODY(torch.nn.Module):
         x = self.flatten(pred_3d_joints)
         x = self.encoder1(x)
         x = self.encoder2(x)# [batch, 3]
+
+        x = x + feat_dir
         l2 = x[:,0]**2 + x[:,1]**2 + x[:,2]**2
         #print(l2.shape)
         x = x/l2[:,None]
         #x = x.squeeze(2)#transpose(2,1)
         #print("shape of x.", x.shape) # [1, 14, 3]
         return x
-
-        y = self.test1(test)
-        y = self.test2(y)
-        return y
-

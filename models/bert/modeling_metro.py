@@ -231,6 +231,6 @@ class METRO_Body_Network(torch.nn.Module):
         pred_vertices_full = pred_vertices_full.transpose(1,2)
 
         if self.config.output_attentions==True:
-            return cam_param, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices_full, hidden_states, att
+            return cam_param, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices_full, hidden_states, att, image_feat_newview
         else:
-            return cam_param, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices_full 
+            return cam_param, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices_full, image_feat_newview 

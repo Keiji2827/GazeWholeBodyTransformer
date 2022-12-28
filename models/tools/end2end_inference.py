@@ -32,11 +32,6 @@ from models.smpl._smpl import SMPL, Mesh
 from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
 from models.hrnet.config import config as hrnet_config
 from models.hrnet.config import update_config as hrnet_update_config
-
-#from metro.utils.renderer import Renderer, visualize_reconstruction, visualize_reconstruction_test, visualize_reconstruction_no_text, visualize_reconstruction_and_att_local
-#from metro.utils.geometric_layers import orthographic_projection
-#from metro.utils.logger import setup_logger
-#from metro.utils.miscellaneous import mkdir, set_seed
 from models.dataloader.gafa_loader import create_gafa_dataset
 from models.utils.logger import setup_logger
 from models.utils.metric_logger import AverageMeter
@@ -58,6 +53,29 @@ transform_visualize = transforms.Compose([
                     transforms.CenterCrop(224),
                     transforms.ToTensor()])
 
+
+def save_checkpoint(model, args, epoch, iteration, num_trial=10):
+    checkpoint_dir = op.join(args.output_dir, 'checkpoint-{}-{}'.format(
+        epoch, iteration))
+
+    mkdir(checkpoint_dir)
+    model_to_save = model.module if hasattr(model, 'module') else model
+    for i in range(num_trial):
+        try:
+            torch.save(model_to_save, op.join(checkpoint_dir, 'model.bin'))
+            torch.save(model_to_save.state_dict(), op.join(checkpoint_dir, 'state_dict.bin'))
+            torch.save(args, op.join(checkpoint_dir, 'training_args.bin'))
+            logger.info("Save checkpoint to {}".format(checkpoint_dir))
+            break
+        except:
+            pass
+    else:
+        logger.info("Failed to save checkpoint after {} trails.".format(num_trial))
+    return checkpoint_dir
+
+
+
+
 class CosLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
@@ -73,18 +91,18 @@ class CosLoss(torch.nn.Module):
 
         return loss
 
-def run(args, train_dataloader, val_dataloader, _metro_network, smpl, mesh_sampler):
+def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sampler):
 
     max_iter = len(train_dataloader)
-    args.logging_steps = 500
-    epochs = 100
+    print("len of dataset:",max_iter)
+    epochs = args.num_train_epochs
 
-    optimizer = torch.optim.Adam(params=list(_metro_network.parameters()),lr=args.lr,
+    optimizer = torch.optim.Adam(params=list(_gaze_network.parameters()),lr=args.lr,
                                             betas=(0.9, 0.999), weight_decay=0) 
 
     start_training_time = time.time()
     end = time.time()
-    _metro_network.train()
+    _gaze_network.train()
     batch_time = AverageMeter()
     data_time = AverageMeter()
     log_losses = AverageMeter()
@@ -95,8 +113,8 @@ def run(args, train_dataloader, val_dataloader, _metro_network, smpl, mesh_sampl
         for iteration, batch in enumerate(train_dataloader):
 
             iteration += 1
-            epoch = iteration
-            _metro_network.train()
+            #epoch = iteration
+            _gaze_network.train()
 
             image = batch["image"].cuda(args.device)
             gaze_dir = batch["gaze_dir"].cuda(args.device)
@@ -119,7 +137,7 @@ def run(args, train_dataloader, val_dataloader, _metro_network, smpl, mesh_sampl
             #print("gaze_dir:",gaze_dir)
 
             # forward-pass
-            direction = _metro_network(batch_imgs, smpl, mesh_sampler, head_dir)
+            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, head_dir)
             #print(direction.shape)
 
             loss = criterion_mse(direction,gaze_dir).mean()
@@ -135,25 +153,27 @@ def run(args, train_dataloader, val_dataloader, _metro_network, smpl, mesh_sampl
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if(iteration%10==0):
+            if(iteration%args.logging_steps==0):
                 #print("iteration:",iteration)
                 eta_seconds = batch_time.avg * (max_iter - iteration)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 logger.info(
                     ' '.join(
-                    ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}', 'max mem : {memory:.0f}',]
-                    ).format(eta=eta_string, ep=epoch, iter=iteration, 
-                        memory=torch.cuda.max_memory_allocated() / 1024.0 / 1024.0) 
+                    ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
+                    ).format(eta=eta_string, ep=epoch, iter=iteration) 
                     + ":loss:{:.4f}, lr:{:.6f}".format(log_losses.avg, optimizer.param_groups[0]["lr"])
                 )
+                checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
+                print("save trained model at ", checkpoint_dir)
         
-            if(iteration % 400 == 0):
-                val = run_validate(args, val_dataloader, 
-                                    _metro_network, 
-                                    criterion_mse,
-                                    smpl,
-                                    mesh_sampler)
-                print("val:", val)
+        val = run_validate(args, val_dataloader, 
+                            _gaze_network, 
+                            criterion_mse,
+                            smpl,
+                            mesh_sampler)
+        print("val:", val)
+        checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
+        print("save trained model at ", checkpoint_dir)
 
 def run_validate(args, val_dataloader, _metro_network, criterion_mse, smpl,mesh_sampler):
     batch_time = AverageMeter()
@@ -183,8 +203,8 @@ def run_validate(args, val_dataloader, _metro_network, criterion_mse, smpl,mesh_
             # update logs
             mse.update(loss.item(), batch_size)
 
-            if (iteration > 1000):
-                break
+            #if (iteration > 1000):
+            #    break
 
 
     return mse.avg
@@ -276,7 +296,7 @@ def parse_args():
                         help="Batch size per GPU/CPU for evaluation.")
     parser.add_argument('--lr', "--learning_rate", default=1e-4, type=float, 
                         help="The initial lr.")
-    parser.add_argument("--num_train_epochs", default=200, type=int, 
+    parser.add_argument("--num_train_epochs", default=20, type=int, 
                         help="Total number of training epochs to perform.")
     parser.add_argument("--drop_out", default=0.1, type=float, 
                         help="Drop out ratio in BERT.")
@@ -303,6 +323,8 @@ def parse_args():
     # Others
     #########################################################
     parser.add_argument("--run_eval_only", default=False, action='store_true',) 
+    parser.add_argument('--logging_steps', type=int, default=10000, 
+                        help="Log every X steps.")
     parser.add_argument("--device", type=str, default='cuda', 
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
@@ -479,11 +501,18 @@ def main(args):
 
     else:
         logger.info("Run train")
-        exp_names = ["courtyard/002/","courtyard/003/","courtyard/004/"
-                    ,"kitchen/1015_4","kitchen/1022_2","kitchen/1022_4"
-                    ,"lab/1013_1","lab/1013_2","lab/1014_1"
-                    ,"library/1026_3","library/1028_2","library/1028_5","library/1029_2"
-                     
+        exp_names = [
+        'library/1026_3',
+        'library/1028_2',
+        'library/1028_5',
+        'lab/1013_1',
+        'lab/1014_1',
+        'kitchen/1022_4',
+        'kitchen/1015_4',
+        'living_room/004',
+        'living_room/005',
+        'courtyard/004',
+        'courtyard/005',
                     ]
         dset = create_gafa_dataset(exp_names=exp_names)
         #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
