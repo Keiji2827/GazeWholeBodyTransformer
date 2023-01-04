@@ -156,7 +156,7 @@ def parse_args():
     parser.add_argument("--run_eval_only", default=False, action='store_true',) 
     parser.add_argument('--logging_steps', type=int, default=10000, 
                         help="Log every X steps.")
-    parser.add_argument("--device", type=str, default='cuda', 
+    parser.add_argument("--device", type=str, default='cuda:1', 
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
