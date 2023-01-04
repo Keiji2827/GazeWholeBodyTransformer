@@ -175,7 +175,7 @@ def main(args):
 
     # default='output/'
     #mkdir(args.output_dir)
-    #logger = setup_logger("WholeBodyGaze Test", args.output_dir, 0)
+    logger = setup_logger("WholeBodyGaze Test", args.output_dir, 0)
     # randomのシード
     # default=88
     set_seed(args.seed, args.num_gpus)
