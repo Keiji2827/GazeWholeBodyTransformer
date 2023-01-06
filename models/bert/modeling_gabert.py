@@ -19,7 +19,7 @@ class GAZEFROMBODY(torch.nn.Module):
 
 
 
-    def forward(self, images, smpl, mesh_sampler, test,is_train=False):
+    def forward(self, images, smpl, mesh_sampler, test,is_train=False, render=False):
         batch_size = images.size(0)
         self.bert.eval()
         To4joints = [ 8, 9, 13]
@@ -58,4 +58,8 @@ class GAZEFROMBODY(torch.nn.Module):
         x = x/l2[:,None]
         #x = x.squeeze(2)#transpose(2,1)
         #print("shape of x.", x.shape) # [1, 14, 3]
-        return x
+
+        if render == False:
+            return x
+        if render == True:
+            return x, pred_vertices, pred_camera

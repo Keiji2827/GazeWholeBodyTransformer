@@ -22,7 +22,7 @@ import torch
 import torchvision.models as models
 #from torchvision.utils import make_grid
 import numpy as np
-#import cv2
+import cv2
 from torch.utils.data import DataLoader
 from models.bert.modeling_bert import BertConfig
 from models.bert.modeling_metro import METRO_Body_Network as METRO_Network
@@ -33,10 +33,13 @@ from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
 from models.hrnet.config import config as hrnet_config
 from models.hrnet.config import update_config as hrnet_update_config
 from models.dataloader.gafa_loader import create_gafa_dataset
+
+from models.utils.renderer import Renderer, visualize_reconstruction_no_text
 from models.utils.logger import setup_logger
 from models.utils.metric_logger import AverageMeter
 from models.utils.miscellaneous import set_seed
 
+from PIL import Image
 from torchvision import transforms
 
 transform = transforms.Compose([           
@@ -53,20 +56,61 @@ transform_visualize = transforms.Compose([
                     transforms.ToTensor()])
 
 
-def run(args, image, _gaze_network, smpl, mesh_sampler):
+def run(args, image_list, _gaze_network, renderer, smpl, mesh_sampler):
 
     _gaze_network.eval()
     smpl.eval()
 
-    # forward-pass
-    direction = _gaze_network(image, smpl, mesh_sampler, gaze_dir)
+    for image_file in image_list:
+        image = Image.open(image_file)
+        img_tensor = transform(image)
+        img_visual = transform_visualize(image)
 
+        batch_imgs = torch.unsqeeze(img_tensor, 0).cuda()
+        batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda()
 
-    print("test:", gaze_dir)
+        # forward-pass
+        direction, pred_vertices, pred_camera = _gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+        print("test:", gaze_dir)
+
+        visual_imgs_att = visualize_mesh_and_attention( renderer, 
+                                                        batch_visual_imgs[0],
+                                                        pred_vertices[0].detach(), 
+                                                        pred_camera.detach(),
+                                                        )
+
+        visual_imgs = visual_imgs.transpose(1,2,0)
+        visual_imgs = np.asarray(visual_imgs)
+
+        temp_fname = image_file[:-4] + '_pred.jpg'
+        print("save to ", temp_fname)
+        cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
+
+    return
+
+def visualize_mesh_no_text( renderer,
+                    images,
+                    pred_vertices, 
+                    pred_camera):
+    """Tensorboard logging."""
+    img = images.cpu().numpy().transpose(1,2,0)
+    # Get predict vertices for the particular example
+    vertices = pred_vertices.cpu().numpy()
+    cam = pred_camera.cpu().numpy()
+    # Visualize reconstruction only
+    rend_img = visualize_reconstruction_no_text(img, 224, vertices, cam, renderer, color='pink')
+    rend_img = rend_img.transpose(2,0,1)
+    return rend_img
+
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    #########################################################
+    # Data related arguments
+    #########################################################
+    parser.add_argument("--image_file_or_path", default='./', type=str, 
+                        help="image data")
     #########################################################
     # Loading/saving checkpoints
     #########################################################
@@ -130,7 +174,7 @@ def main(args):
 
     # Renderer for visualization
     # from metro.utils.renderer import Renderer, visualize_reconstruction, visualize_reconstruction_test, visualize_reconstruction_no_text, visualize_reconstruction_and_att_local
-    #renderer = Renderer(faces=mesh_smpl.faces.cpu().numpy())
+    renderer = Renderer(faces=mesh_smpl.faces.cpu().numpy())
 
     # Load pretrained model
     # --resume_checkpoint ./models/metro_release/metro_3dpw_state_dict.bin
@@ -252,9 +296,24 @@ def main(args):
     _gaze_network.load_state_dict(state_dict)
     del state_dict
 
+    # loading images
+    image_list = []
+
+    if not args.image_file_or_path:
+        raise ValueError("image_file_or_path not specified")
+    if op.isfile(args.image_file_or_path):
+        image_list = [args.image_file_or_path]
+    if op.isdir(args.image_file_or_path):
+        for filename in os.listdir(args.image_file_or_path):
+            if filename.append(args.image_file_or_path+'/'+filename)
+    else:
+        raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
+
+
+
     logger.info("Run")
 
-    run(args, image, _gaze_network, mesh_smpl, mesh_sampler)
+    run(args, image_list, _gaze_network, renderer, mesh_smpl, mesh_sampler)
 
 if __name__ == "__main__":
     args = parse_args()
