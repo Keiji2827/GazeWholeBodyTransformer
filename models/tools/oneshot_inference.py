@@ -305,7 +305,8 @@ def main(args):
         image_list = [args.image_file_or_path]
     if op.isdir(args.image_file_or_path):
         for filename in os.listdir(args.image_file_or_path):
-            if filename.append(args.image_file_or_path+'/'+filename)
+            if filename.endswith(".png") or filename.endswith(".jpg"):
+                image_list.append(args.image_file_or_path+'/'+filename)
     else:
         raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
 
