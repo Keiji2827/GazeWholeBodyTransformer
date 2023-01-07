@@ -24,7 +24,6 @@ import torchvision.models as models
 #from torchvision.utils import make_grid
 import numpy as np
 import cv2
-from torch.utils.data import DataLoader
 from models.bert.modeling_bert import BertConfig
 from models.bert.modeling_metro import METRO_Body_Network as METRO_Network
 from models.bert.modeling_metro import METRO
@@ -37,8 +36,8 @@ from models.dataloader.gafa_loader import create_gafa_dataset
 import models.data.config as cfg
 
 from models.utils.renderer import Renderer, visualize_reconstruction_no_text
+from metro.utils.geometric_layers import orthographic_projection
 from models.utils.logger import setup_logger
-from models.utils.metric_logger import AverageMeter
 from models.utils.miscellaneous import set_seed
 
 from PIL import Image
@@ -72,7 +71,7 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda(args.device)
 
         # forward-pass
-        direction, _, _, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
+        direction, pred_center, _, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
         pred_camera, pred_3d_joints, _, _, pred_vertices, _, _, _ = bodyrenderer_network(batch_imgs, smpl, mesh_sampler)
 
         print("test:", direction)
@@ -93,14 +92,18 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         visual_imgs = np.asarray(visual_imgs)
 
         # visualize gaze direction
+
+        pred_2d_center = orthographic_projection(pred_center, pred_camera)
+
+
         gazedir_2d = direction[0, 0:2].numpy()
         gazedir_2d /= np.linalg.norm(gazedir_2d)
         head_center_x = 70
         head_center_y = 40
         head_center = (int(head_center_x), int(head_center_y))
-        des = (head_center[0] + int(gaze_dir_2d[0]*50), int(head_center[1] + gaze_dir_2d[1]*50))
+        des = (pred_2d_center[0] + int(gaze_dir_2d[0]*50), int(pred_2d_center[1] + gaze_dir_2d[1]*50))
 
-        visual_imgs = cv2.arrowedLine(visual_imgs.copy(), head_center, des, (0, 255, 0), 3, tipLength=0.3)
+        visual_imgs = cv2.arrowedLine(visual_imgs.copy(), pred_2d_center, des, (0, 255, 0), 3, tipLength=0.3)
 
         temp_fname = image_file[:-4] + '_pred.jpg'
         print("save to ", temp_fname)
