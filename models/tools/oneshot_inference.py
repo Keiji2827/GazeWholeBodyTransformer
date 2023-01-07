@@ -92,6 +92,16 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         visual_imgs = visual_imgs.transpose(1,2,0)
         visual_imgs = np.asarray(visual_imgs)
 
+        # visualize gaze direction
+        gazedir_2d = direction[0, 0:2].numpy()
+        gazedir_2d /= np.linalg.norm(gazedir_2d)
+        head_center_x = 70
+        head_center_y = 40
+        head_center = (int(head_center_x), int(head_center_y))
+        des = (head_center[0] + int(gaze_dir_2d[0]*50), int(head_center[1] + gaze_dir_2d[1]*50))
+
+        visual_imgs = cv2.arrowedLine(visual_imgs.copy(), head_center, des, (0, 255, 0), 3, tipLength=0.3)
+
         temp_fname = image_file[:-4] + '_pred.jpg'
         print("save to ", temp_fname)
         cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
