@@ -163,8 +163,6 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
                     + ":loss:{:.4f}, lr:{:.6f}".format(log_losses.avg, optimizer.param_groups[0]["lr"])
                 )
-                checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
-                print("save trained model at ", checkpoint_dir)
         
         val = run_validate(args, val_dataloader, 
                             _gaze_network, 

@@ -19,7 +19,7 @@ class GAZEFROMBODY(torch.nn.Module):
 
 
 
-    def forward(self, images, smpl, mesh_sampler, test,is_train=False, render=False):
+    def forward(self, images, smpl, mesh_sampler, test=None, is_train=False, render=False):
         batch_size = images.size(0)
         self.bert.eval()
         To4joints = [ 8, 9, 13]

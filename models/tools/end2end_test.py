@@ -131,6 +131,8 @@ def parse_args():
                         help="Path to specific checkpoint for inference.")
     parser.add_argument("--model_checkpoint", default='output/checkpoint-6-54572/state_dict.bin', type=str, required=False,
                         help="Path to wholebodygaze checkpoint for inference.")
+    parser.add_argument("--output_dir", default='output/', type=str, required=False,
+                        help="The output directory to save checkpoint and test results.")
     #########################################################
     # Model architectures
     #########################################################
@@ -153,10 +155,7 @@ def parse_args():
     #########################################################
     # Others
     #########################################################
-    parser.add_argument("--run_eval_only", default=False, action='store_true',) 
-    parser.add_argument('--logging_steps', type=int, default=10000, 
-                        help="Log every X steps.")
-    parser.add_argument("--device", type=str, default='cuda:1', 
+    parser.add_argument("--device", type=str, default='cuda', 
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")

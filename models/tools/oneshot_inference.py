@@ -66,18 +66,18 @@ def run(args, image_list, _gaze_network, renderer, smpl, mesh_sampler):
         img_tensor = transform(image)
         img_visual = transform_visualize(image)
 
-        batch_imgs = torch.unsqeeze(img_tensor, 0).cuda()
-        batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda()
+        batch_imgs = torch.unsqueeze(img_tensor, 0).cuda(args.device)
+        batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda(args.device)
 
         # forward-pass
-        direction, pred_vertices, pred_camera = _gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
-        print("test:", gaze_dir)
+        direction, pred_vertices, pred_camera = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
+        print("test:", direction)
 
-        visual_imgs_att = visualize_mesh_and_attention( renderer, 
-                                                        batch_visual_imgs[0],
-                                                        pred_vertices[0].detach(), 
-                                                        pred_camera.detach(),
-                                                        )
+        visual_imgs = visualize_mesh_no_text( renderer, 
+                                              batch_visual_imgs[0],
+                                              pred_vertices[0].detach(), 
+                                              pred_camera.detach(),
+                                              )
 
         visual_imgs = visual_imgs.transpose(1,2,0)
         visual_imgs = np.asarray(visual_imgs)
@@ -111,6 +111,8 @@ def parse_args():
     #########################################################
     parser.add_argument("--image_file_or_path", default='./', type=str, 
                         help="image data")
+    parser.add_argument("--output_dir", default='output/', type=str, required=False,
+                        help="The output directory to save checkpoint and test results.")
     #########################################################
     # Loading/saving checkpoints
     #########################################################
@@ -142,7 +144,7 @@ def parse_args():
     #########################################################
     # Others
     #########################################################
-    parser.add_argument("--device", type=str, default='cuda:1', 
+    parser.add_argument("--device", type=str, default='cuda', 
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
@@ -303,7 +305,7 @@ def main(args):
         raise ValueError("image_file_or_path not specified")
     if op.isfile(args.image_file_or_path):
         image_list = [args.image_file_or_path]
-    if op.isdir(args.image_file_or_path):
+    elif op.isdir(args.image_file_or_path):
         for filename in os.listdir(args.image_file_or_path):
             if filename.endswith(".png") or filename.endswith(".jpg"):
                 image_list.append(args.image_file_or_path+'/'+filename)
