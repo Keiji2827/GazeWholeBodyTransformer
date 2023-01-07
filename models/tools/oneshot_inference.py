@@ -82,6 +82,9 @@ def run(args, image_list, _gaze_network, renderer, smpl, mesh_sampler):
         visual_imgs = visual_imgs.transpose(1,2,0)
         visual_imgs = np.asarray(visual_imgs)
 
+        print(pred_vertices)
+        print(pred_camera)
+
         temp_fname = image_file[:-4] + '_pred.jpg'
         print("save to ", temp_fname)
         cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
@@ -98,7 +101,7 @@ def visualize_mesh_no_text( renderer,
     vertices = pred_vertices.cpu().numpy()
     cam = pred_camera.cpu().numpy()
     # Visualize reconstruction only
-    rend_img = visualize_reconstruction_no_text(img, 224, vertices, cam, renderer, color='pink')
+    rend_img = visualize_reconstruction_no_text(img, 224, vertices, cam, renderer, color='hand')
     rend_img = rend_img.transpose(2,0,1)
     return rend_img
 
