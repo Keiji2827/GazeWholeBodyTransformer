@@ -18,6 +18,7 @@ import code
 import json
 import time
 import datetime
+import copy
 import torch
 import torchvision.models as models
 #from torchvision.utils import make_grid
@@ -57,7 +58,7 @@ transform_visualize = transforms.Compose([
                     transforms.ToTensor()])
 
 
-def run(args, image_list, _gaze_network, renderer, smpl, mesh_sampler):
+def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, mesh_sampler):
 
     _gaze_network.eval()
     smpl.eval()
@@ -71,7 +72,9 @@ def run(args, image_list, _gaze_network, renderer, smpl, mesh_sampler):
         batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda(args.device)
 
         # forward-pass
-        direction, pred_vertices, pred_camera = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
+        direction, _, _, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
+        pred_camera, pred_3d_joints, _, _, pred_vertices, _, _, _ = bodyrenderer_network(batch_imgs, smpl, mesh_sampler)
+
         print("test:", direction)
 
         visual_imgs = visualize_mesh_no_text( renderer, 
@@ -88,9 +91,6 @@ def run(args, image_list, _gaze_network, renderer, smpl, mesh_sampler):
 
         visual_imgs = visual_imgs.transpose(1,2,0)
         visual_imgs = np.asarray(visual_imgs)
-
-        print(pred_vertices)
-        print(pred_camera)
 
         temp_fname = image_file[:-4] + '_pred.jpg'
         print("save to ", temp_fname)
@@ -294,6 +294,13 @@ def main(args):
         setattr(_metro_network.trans_encoder[-1].config,'device', args.device)
 
     _metro_network.to(args.device)
+
+
+
+    bodyrenderer_network = copy.deepcopy(_metro_network)
+
+
+
     logger.info("Run Test")
 
     _gaze_network = GAZEFROMBODY(args, _metro_network)
@@ -326,7 +333,7 @@ def main(args):
 
     logger.info("Run")
 
-    run(args, image_list, _gaze_network, renderer, mesh_smpl, mesh_sampler)
+    run(args, image_list, _gaze_network, bodyrenderer_network, renderer, mesh_smpl, mesh_sampler)
 
 if __name__ == "__main__":
     args = parse_args()

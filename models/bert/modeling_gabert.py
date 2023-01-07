@@ -62,4 +62,4 @@ class GAZEFROMBODY(torch.nn.Module):
         if render == False:
             return x
         if render == True:
-            return x, pred_vertices, pred_camera
+            return x, pred_3d_joints, pred_vertices, pred_camera
