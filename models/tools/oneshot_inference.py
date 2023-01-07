@@ -33,6 +33,7 @@ from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
 from models.hrnet.config import config as hrnet_config
 from models.hrnet.config import update_config as hrnet_update_config
 from models.dataloader.gafa_loader import create_gafa_dataset
+import models.data.config as cfg
 
 from models.utils.renderer import Renderer, visualize_reconstruction_no_text
 from models.utils.logger import setup_logger
@@ -78,6 +79,12 @@ def run(args, image_list, _gaze_network, renderer, smpl, mesh_sampler):
                                               pred_vertices[0].detach(), 
                                               pred_camera.detach(),
                                               )
+
+        # obtain 3d joints from full mesh
+        pred_3d_joints_from_smpl = smpl.get_h36m_joints(pred_vertices)
+
+        pred_3d_pelvis = pred_3d_joints_from_smpl[:,cfg.H36M_J17_NAME.index('Pelvis'),:]
+        pred_vertices = pred_vertices - pred_3d_pelvis[:, None, :]
 
         visual_imgs = visual_imgs.transpose(1,2,0)
         visual_imgs = np.asarray(visual_imgs)
