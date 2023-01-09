@@ -35,7 +35,7 @@ from models.hrnet.config import update_config as hrnet_update_config
 from models.dataloader.gafa_loader import create_gafa_dataset
 import models.data.config as cfg
 
-from models.utils.renderer import Renderer, visualize_reconstruction_no_text
+from models.utils.renderer import Renderer, visualize_reconstruction_no_text, visualize_reconstruction
 from metro.utils.geometric_layers import orthographic_projection
 from models.utils.logger import setup_logger
 from models.utils.miscellaneous import set_seed
@@ -44,7 +44,7 @@ from PIL import Image
 from torchvision import transforms
 
 transform = transforms.Compose([           
-                    transforms.Resize(224),
+                    transforms.Resize(200),
                     transforms.CenterCrop(224),
                     transforms.ToTensor(),
                     transforms.Normalize(
@@ -52,7 +52,7 @@ transform = transforms.Compose([
                         std=[0.229, 0.224, 0.225])])
 
 transform_visualize = transforms.Compose([           
-                    transforms.Resize(224),
+                    transforms.Resize(200),
                     transforms.CenterCrop(224),
                     transforms.ToTensor()])
 
@@ -71,10 +71,10 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda(args.device)
 
         # forward-pass
-        direction, pred_center, _, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
+        direction, _, _, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
         pred_camera, pred_3d_joints, _, _, pred_vertices, _, _, _ = bodyrenderer_network(batch_imgs, smpl, mesh_sampler)
 
-        print("test:", direction)
+        #print("test:", pred_head)
 
         visual_imgs = visualize_mesh_no_text( renderer, 
                                               batch_visual_imgs[0],
@@ -92,33 +92,59 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         visual_imgs = np.asarray(visual_imgs)
 
         # visualize gaze direction
-<<<<<<< HEAD
         direction = direction.cpu()
         gazedir_2d = direction[0, 0:2].detach().numpy()
-=======
+        #pred_head = pred_3d_joints[:, 12,:]
 
-        pred_2d_center = orthographic_projection(pred_center, pred_camera)
+        #pred_head = pred_3d_joints[:, [9],:]
+        #pred_center_tmp = torch.unsqueeze(pred_center, 0).cpu().detach().numpy()
+        pred_2d_joints = orthographic_projection(pred_3d_joints, pred_camera)
+        #print(pred_2d_center.size())
+        #pred_2d_center = pred_2d_center.cpu().detach().numpy()
+        #print(pred_2d_center)
+        #print(pred_2d_center[0])
+        #print(pred_2d_center[1])
+        pred_head = pred_2d_joints[:, 13,:]
+        pred_head =((pred_head + 1) * 0.5) * 224
 
-
-        gazedir_2d = direction[0, 0:2].numpy()
->>>>>>> 7da854c4726950b9a87376e4a12ee8e8f7bcffcb
-        gazedir_2d /= np.linalg.norm(gazedir_2d)
-        head_center_x = 70
-        head_center_y = 40
+        #gazedir_2d /= np.linalg.norm(gazedir_2d)
+        head_center_x = pred_head[0][0]
+        head_center_y = pred_head[0][1]
         head_center = (int(head_center_x), int(head_center_y))
-<<<<<<< HEAD
-        des = (head_center[0] + int(gazedir_2d[0]*50), int(head_center[1] + gazedir_2d[1]*50))
-=======
-        des = (pred_2d_center[0] + int(gaze_dir_2d[0]*50), int(pred_2d_center[1] + gaze_dir_2d[1]*50))
->>>>>>> 7da854c4726950b9a87376e4a12ee8e8f7bcffcb
-
-        visual_imgs = cv2.arrowedLine(visual_imgs.copy(), pred_2d_center, des, (0, 255, 0), 3, tipLength=0.3)
-
+        des = (head_center[0] + int(gazedir_2d[0]*20), int(head_center[1] + gazedir_2d[1]*20))
+        visual_imgs = visualize_mesh(renderer, batch_visual_imgs[0], pred_camera.detach(), pred_2d_joints[0])
+        visual_imgs = visual_imgs.transpose(1,2,0)
+        visual_imgs = np.asarray(visual_imgs)
+        visual_imgs = cv2.arrowedLine(visual_imgs.copy(), head_center, des, (0, 255, 0), 3, tipLength=0.3)
         temp_fname = image_file[:-4] + '_pred.jpg'
         print("save to ", temp_fname)
         cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
 
     return
+
+def visualize_mesh( renderer,
+                    images,
+                    pred_camera,
+                    pred_keypoints_2d):
+    """Tensorboard logging."""
+    to_lsp = list(range(14))
+    rend_imgs = []
+    #batch_size = pred_keypoints_2d.shape[0]
+    # Do visualization for the first 6 images of the batch
+    img = images.cpu().numpy().transpose(1,2,0)
+    # Get LSP keypoints from the full list of keypoints
+    pred_keypoints_2d_ = pred_keypoints_2d.cpu().detach().numpy()
+    # Get predict vertices for the particular example
+    cam = pred_camera.cpu().numpy()
+    # Visualize reconstruction and detected pose
+    rend_img = visualize_reconstruction(img, 224, pred_keypoints_2d_, cam, renderer)
+    rend_img = rend_img.transpose(2,0,1)
+    #rend_imgs.append(torch.from_numpy(rend_img))   
+
+    return rend_img
+
+
+
 
 def visualize_mesh_no_text( renderer,
                     images,
@@ -152,7 +178,7 @@ def parse_args():
                         help="Path to pre-trained transformer model or model type.")
     parser.add_argument("--resume_checkpoint", default=None, type=str, required=False,
                         help="Path to specific checkpoint for inference.")
-    parser.add_argument("--model_checkpoint", default='output/checkpoint-6-54572/state_dict.bin', type=str, required=False,
+    parser.add_argument("--model_checkpoint", default='output/checkpoint2212/checkpoint-6-54572/state_dict.bin', type=str, required=False,
                         help="Path to wholebodygaze checkpoint for inference.")
     #########################################################
     # Model architectures
