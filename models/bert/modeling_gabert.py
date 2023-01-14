@@ -7,8 +7,9 @@ from .modeling_bert import BertPreTrainedModel, BertEmbeddings, BertEncoder, Ber
 
 class GAZEFROMBODY(torch.nn.Module):
 
-    def __init__(self, args, bert):
+    def __init__(self, args, bert, backbone):
         super(GAZEFROMBODY, self).__init__()
+        self.backbone = backbone
         self.bert = bert
         self.encoder1 = torch.nn.Linear(9,250)
         self.encoder2 = torch.nn.Linear(250,3)
@@ -24,9 +25,9 @@ class GAZEFROMBODY(torch.nn.Module):
         self.bert.eval()
         To4joints = [ 8, 9, 13]
 
-        # metro inference
-        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att, image_feat_newview = self.bert(images, smpl, mesh_sampler)
-        #print("shape of pred_3d_joints.", pred_3d_joints.shape) # [1, 14, 3]
+        with torch.no_grad():
+            # metro inference
+            pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att, _ = self.bert(images, smpl, mesh_sampler)
 
         pred_head = pred_3d_joints[:, 9,:]
         pred_center = (pred_3d_joints[:, 8,:] + pred_3d_joints[:, 9,:]) / 2
@@ -38,6 +39,9 @@ class GAZEFROMBODY(torch.nn.Module):
         #x = self.encoder13(pred_center)
         #x = self.encoder31(x)
         #return x
+        image_feat = self.backbone(images)
+        image_feat_newview = image_feat.view(batch_size,2048,-1)
+        image_feat_newview = image_feat_newview.transpose(1,2)
 
         feat_dir = self.flatten(image_feat_newview)
         feat_dir = self.feat_mlp1(feat_dir)
@@ -62,4 +66,4 @@ class GAZEFROMBODY(torch.nn.Module):
         if render == False:
             return x
         if render == True:
-            return x, pred_center, pred_vertices, pred_camera
+            return x, pred_head[: ,None,:], pred_vertices, pred_camera

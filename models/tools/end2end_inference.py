@@ -16,6 +16,7 @@ import os
 import os.path as op
 import code
 import json
+import copy
 import time
 import datetime
 import torch
@@ -465,9 +466,12 @@ def main(args):
         setattr(_metro_network.trans_encoder[-1].config,'device', args.device)
 
     _metro_network.to(args.device)
+    backbone_train = copy.deepcopy(backbone)
+
+
     logger.info("Run inference")
 
-    _gaze_network = GAZEFROMBODY(args, _metro_network)
+    _gaze_network = GAZEFROMBODY(args, _metro_network, backbone_train)
     _gaze_network.to(args.device)
 
     print(args.device)
@@ -519,7 +523,7 @@ def main(args):
         val_dset   = Subset(dset, val_idx)
 
         train_dataloader = DataLoader(
-            train_dset, batch_size=10, num_workers=4, pin_memory=True, shuffle=True
+            train_dset, batch_size=20, num_workers=4, pin_memory=True, shuffle=True
         )
         val_dataloader = DataLoader(
             val_dset, batch_size=10, shuffle=False, num_workers=4, pin_memory=True
