@@ -61,3 +61,45 @@ save trained model at  output/checkpoint-3-27286
 2023-01-14 13:13:10,444 METRO Inference INFO: eta: 8:19:22 epoch: 4 iter: 4000:loss:7.4394, lr:0.000100
 2023-01-14 14:33:40,594 METRO Inference INFO: eta: 6:52:43 epoch: 4 iter: 8000:loss:7.3994, lr:0.000100
 2023-01-14 15:53:31,982 METRO Inference INFO: eta: 5:26:23 epoch: 4 iter: 12000:loss:7.3618, lr:0.000100
+2023-01-14 17:13:23,991 METRO Inference INFO: eta: 4:00:29 epoch: 4 iter: 16000:loss:7.3222, lr:0.000100
+2023-01-14 18:33:24,495 METRO Inference INFO: eta: 2:34:57 epoch: 4 iter: 20000:loss:7.2944, lr:0.000100
+2023-01-14 19:53:34,926 METRO Inference INFO: eta: 1:09:45 epoch: 4 iter: 24000:loss:7.2612, lr:0.000100
+val: 11.79996854271704
+2023-01-14 21:35:56,071 METRO Inference INFO: Save checkpoint to output/checkpoint-4-27286
+save trained model at  output/checkpoint-4-27286
+2023-01-14 22:56:16,874 METRO Inference INFO: eta: 8:19:01 epoch: 5 iter: 4000:loss:7.1964, lr:0.000100
+2023-01-15 00:16:40,881 METRO Inference INFO: eta: 6:52:35 epoch: 5 iter: 8000:loss:7.1660, lr:0.000100
+2023-01-15 01:36:57,978 METRO Inference INFO: eta: 5:26:28 epoch: 5 iter: 12000:loss:7.1381, lr:0.000100
+2023-01-15 02:57:11,728 METRO Inference INFO: eta: 4:00:39 epoch: 5 iter: 16000:loss:7.1153, lr:0.000100
+2023-01-15 04:17:29,077 METRO Inference INFO: eta: 2:35:07 epoch: 5 iter: 20000:loss:7.0953, lr:0.000100
+2023-01-15 05:37:45,329 METRO Inference INFO: eta: 1:09:51 epoch: 5 iter: 24000:loss:7.0685, lr:0.000100
+val: 8.714574386404847
+2023-01-15 07:20:23,734 METRO Inference INFO: Save checkpoint to output/checkpoint-5-27286
+save trained model at  output/checkpoint-5-27286
+2023-01-15 08:40:40,961 METRO Inference INFO: eta: 8:18:59 epoch: 6 iter: 4000:loss:7.0091, lr:0.000100
+2023-01-15 10:00:42,750 METRO Inference INFO: eta: 6:52:37 epoch: 6 iter: 8000:loss:6.9812, lr:0.000100
+2023-01-15 11:20:57,430 METRO Inference INFO: eta: 5:26:35 epoch: 6 iter: 12000:loss:6.9633, lr:0.000100
+2023-01-15 12:41:09,301 METRO Inference INFO: eta: 4:00:47 epoch: 6 iter: 16000:loss:6.9435, lr:0.000100
+2023-01-15 14:01:24,364 METRO Inference INFO: eta: 2:35:15 epoch: 6 iter: 20000:loss:6.9191, lr:0.000100
+2023-01-15 15:21:39,852 METRO Inference INFO: eta: 1:09:55 epoch: 6 iter: 24000:loss:6.9017, lr:0.000100
+val: 9.21915862626344
+2023-01-15 17:04:08,165 METRO Inference INFO: Save checkpoint to output/checkpoint-6-27286
+save trained model at  output/checkpoint-6-27286
+2023-01-15 18:24:24,724 METRO Inference INFO: eta: 8:18:52 epoch: 7 iter: 4000:loss:6.8574, lr:0.000100
+2023-01-15 19:44:31,710 METRO Inference INFO: eta: 6:52:37 epoch: 7 iter: 8000:loss:6.8375, lr:0.000100
+2023-01-15 21:04:15,267 METRO Inference INFO: eta: 5:26:36 epoch: 7 iter: 12000:loss:6.8158, lr:0.000100
+2023-01-15 22:23:47,768 METRO Inference INFO: eta: 4:00:49 epoch: 7 iter: 16000:loss:6.7972, lr:0.000100
+2023-01-15 23:44:00,904 METRO Inference INFO: eta: 2:35:17 epoch: 7 iter: 20000:loss:6.7769, lr:0.000100
+2023-01-16 01:04:12,174 METRO Inference INFO: eta: 1:09:57 epoch: 7 iter: 24000:loss:6.7580, lr:0.000100
+val: 9.527325550172517
+2023-01-16 02:46:31,261 METRO Inference INFO: Save checkpoint to output/checkpoint-7-27286
+save trained model at  output/checkpoint-7-27286
+2023-01-16 04:06:42,849 METRO Inference INFO: eta: 8:18:37 epoch: 8 iter: 4000:loss:6.7257, lr:0.000100
+2023-01-16 05:27:06,798 METRO Inference INFO: eta: 6:52:31 epoch: 8 iter: 8000:loss:6.7079, lr:0.000100
+2023-01-16 06:47:22,237 METRO Inference INFO: eta: 5:26:37 epoch: 8 iter: 12000:loss:6.6881, lr:0.000100
+2023-01-16 08:07:32,900 METRO Inference INFO: eta: 4:00:53 epoch: 8 iter: 16000:loss:6.6692, lr:0.000100
+2023-01-16 09:27:40,804 METRO Inference INFO: eta: 2:35:21 epoch: 8 iter: 20000:loss:6.6498, lr:0.000100
+2023-01-16 10:47:46,135 METRO Inference INFO: eta: 1:09:59 epoch: 8 iter: 24000:loss:6.6291, lr:0.000100
+val: 20.93478227215696
+2023-01-16 12:30:18,943 METRO Inference INFO: Save checkpoint to output/checkpoint-8-27286
+save trained model at  output/checkpoint-8-27286
