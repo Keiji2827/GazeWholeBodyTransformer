@@ -295,9 +295,10 @@ def main(args):
         setattr(_metro_network.trans_encoder[-1].config,'device', args.device)
 
     _metro_network.to(args.device)
+    backbone_train = copy.deepcopy(backbone)
     logger.info("Run Test")
 
-    _gaze_network = GAZEFROMBODY(args, _metro_network)
+    _gaze_network = GAZEFROMBODY(args, _metro_network, backbone_train)
     _gaze_network.to(args.device)
 
     if args.device == 'cuda':
