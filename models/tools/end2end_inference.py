@@ -500,15 +500,21 @@ def main(args):
     else:
         logger.info("Run train")
         exp_names = [
-        'library/1026_3',
-        'library/1028_2',
-        'library/1028_5',
+        #'library/1029_2', #
+        #'library/1026_3',
+        #'library/1028_2',
+        #'library/1028_5',
+        'lab/1013_2', #
         'lab/1013_1',
         'lab/1014_1',
+        'kitchen/1022_2', # 
         'kitchen/1022_4',
         'kitchen/1015_4',
+        'living_room/006', #
         'living_room/004',
         'living_room/005',
+        'courtyard/002', #
+        'courtyard/003', #
         'courtyard/004',
         'courtyard/005',
                     ]

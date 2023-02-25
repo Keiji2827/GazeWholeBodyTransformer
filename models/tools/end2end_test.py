@@ -127,7 +127,7 @@ def parse_args():
     #########################################################
     parser.add_argument("--model_name_or_path", default='models/bert/bert-base-uncased/', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
-    parser.add_argument("--resume_checkpoint", default=None, type=str, required=False,
+    parser.add_argument("--resume_checkpoint", default='models/weights/metro/metro_3dpw_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for inference.")
     parser.add_argument("--model_checkpoint", default='output/checkpoint-6-54572/state_dict.bin', type=str, required=False,
                         help="Path to wholebodygaze checkpoint for inference.")
@@ -311,12 +311,16 @@ def main(args):
 
     logger.info("Run test")
     exp_names = [
-        'library/1029_2',
-        'lab/1013_2',
-        'kitchen/1022_2',
-        'living_room/006',
-        'courtyard/002',
-        'courtyard/003',
+        #'library/1029_2', #
+        'library/1029_2', 
+        'library/1026_3',
+        'library/1028_2',
+        'library/1028_5',
+        #'lab/1013_2',
+        #'kitchen/1022_2',
+        #'living_room/006',
+        #'courtyard/002',
+        #'courtyard/003',
     ]
 
     dset = create_gafa_dataset(exp_names=exp_names)
