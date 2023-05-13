@@ -109,7 +109,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
 
     criterion_mse = CosLoss().cuda(args.device)
 
-    for epoch in range(epochs):
+    for epoch in range(args.num_init_epoch, epochs):
         for iteration, batch in enumerate(train_dataloader):
 
             iteration += 1
@@ -281,10 +281,12 @@ def parse_args():
     #########################################################
     parser.add_argument("--model_name_or_path", default='models/bert/bert-base-uncased/', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
-    parser.add_argument("--resume_checkpoint", default=None, type=str, required=False,
+    parser.add_argument("--resume_checkpoint", default="models/weights/metro/metro_3dpw_state_dict.bin", type=str, required=False,
                         help="Path to specific checkpoint for inference.")
     parser.add_argument("--output_dir", default='output/', type=str, required=False,
                         help="The output directory to save checkpoint and test results.")
+    parser.add_argument("--model_checkpoint", default='output/checkpoint-6-54572/state_dict.bin', type=str, required=False,
+                        help="Path to wholebodygaze checkpoint for inference.")
     #########################################################
     # Training parameters
     #########################################################
@@ -298,6 +300,8 @@ def parse_args():
                         help="Total number of training epochs to perform.")
     parser.add_argument("--drop_out", default=0.1, type=float, 
                         help="Drop out ratio in BERT.")
+    parser.add_argument("--num_init_epoch", default=0, type=int, 
+                        help="initial epoch number.")
     #########################################################
     # Model architectures
     #########################################################
@@ -470,6 +474,12 @@ def main(args):
     _gaze_network = GAZEFROMBODY(args, _metro_network)
     _gaze_network.to(args.device)
 
+    if not args.num_init_epoch == 0:
+        state_dict = torch.load(args.model_checkpoint)
+        _gaze_network.load_state_dict(state_dict)
+        del state_dict
+
+
     print(args.device)
     if args.device == 'cuda':
         print("distribution")
@@ -519,7 +529,7 @@ def main(args):
         val_dset   = Subset(dset, val_idx)
 
         train_dataloader = DataLoader(
-            train_dset, batch_size=10, num_workers=4, pin_memory=True, shuffle=True
+            train_dset, batch_size=9, num_workers=16, pin_memory=True, shuffle=True
         )
         val_dataloader = DataLoader(
             val_dset, batch_size=10, shuffle=False, num_workers=4, pin_memory=True

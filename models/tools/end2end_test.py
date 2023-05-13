@@ -127,7 +127,7 @@ def parse_args():
     #########################################################
     parser.add_argument("--model_name_or_path", default='models/bert/bert-base-uncased/', type=str, required=False,
                         help="Path to pre-trained transformer model or model type.")
-    parser.add_argument("--resume_checkpoint", default=None, type=str, required=False,
+    parser.add_argument("--resume_checkpoint", default='models/weights/metro/metro_3dpw_state_dict.bin', type=str, required=False,
                         help="Path to specific checkpoint for inference.")
     parser.add_argument("--model_checkpoint", default='output/checkpoint-6-54572/state_dict.bin', type=str, required=False,
                         help="Path to wholebodygaze checkpoint for inference.")
@@ -321,7 +321,7 @@ def main(args):
 
     dset = create_gafa_dataset(exp_names=exp_names)
     test_dataloader = DataLoader(
-        dset, batch_size=10, shuffle=False, num_workers=4, pin_memory=True
+        dset, batch_size=20, shuffle=False, num_workers=16, pin_memory=True
     )
 
     run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler)

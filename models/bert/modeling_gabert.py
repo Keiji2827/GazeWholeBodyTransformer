@@ -29,20 +29,17 @@ class GAZEFROMBODY(torch.nn.Module):
         #print("shape of pred_3d_joints.", pred_3d_joints.shape) # [1, 14, 3]
 
         pred_head = pred_3d_joints[:, 9,:]
-        pred_center = (pred_3d_joints[:, 8,:] + pred_3d_joints[:, 9,:]) / 2
-        pred_center = pred_3d_joints[:, 13,:] - pred_center
+        #pred_center = (pred_3d_joints[:, 8,:] + pred_3d_joints[:, 9,:]) / 2
+        #pred_center = pred_3d_joints[:, 13,:] - pred_center
         #print(pred_3d_joints.shape)
-        #print(test)
-        #print("--")
-        #pred_center = pred_center.squeeze()
-        #x = self.encoder13(pred_center)
-        #x = self.encoder31(x)
-        #return x
+
 
         feat_dir = self.flatten(image_feat_newview)
         feat_dir = self.feat_mlp1(feat_dir)
         feat_dir = self.feat_mlp2(feat_dir)
         #print(feat_dir.size())
+        l2 = feat_dir[:,0]**2 + feat_dir[:,1]**2 + feat_dir[:,2]**2
+        feat_dir = feat_dir/l2[:,None]
 
         pred_3d_joints = pred_3d_joints - pred_head[:, None, :]
         pred_3d_joints = pred_3d_joints[:,[7,10,13],:]
