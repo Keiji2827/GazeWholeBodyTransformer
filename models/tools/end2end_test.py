@@ -109,7 +109,7 @@ def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_s
             batch_size = image.size(0)
 
             # forward-pass
-            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            direction, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
             #print(direction.shape)
 
             loss = criterion_mse(direction,gaze_dir).mean()

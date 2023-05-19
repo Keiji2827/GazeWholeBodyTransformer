@@ -71,7 +71,7 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda(args.device)
 
         # forward-pass
-        direction, _, _, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
+        direction, gaze_head, _, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
         pred_camera, pred_3d_joints, _, _, pred_vertices, _, _, _ = bodyrenderer_network(batch_imgs, smpl, mesh_sampler)
 
         #print("test:", pred_head)
@@ -94,27 +94,27 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         # visualize gaze direction
         direction = direction.cpu()
         gazedir_2d = direction[0, 0:2].detach().numpy()
-        #pred_head = pred_3d_joints[:, 12,:]
 
-        #pred_head = pred_3d_joints[:, [9],:]
-        #pred_center_tmp = torch.unsqueeze(pred_center, 0).cpu().detach().numpy()
+        # convert by projection : 3D joint to 2D joint
         pred_2d_joints = orthographic_projection(pred_3d_joints, pred_camera)
-        #print(pred_2d_center.size())
-        #pred_2d_center = pred_2d_center.cpu().detach().numpy()
-        #print(pred_2d_center)
-        #print(pred_2d_center[0])
-        #print(pred_2d_center[1])
+
         pred_head = pred_2d_joints[:, 13,:]
         pred_head =((pred_head + 1) * 0.5) * 224
+        print(pred_head)
+        print(gaze_head)
 
         #gazedir_2d /= np.linalg.norm(gazedir_2d)
-        head_center_x = pred_head[0][0]
-        head_center_y = pred_head[0][1]
+        head_center_x = gaze_head[0][0]
+        head_center_y = gaze_head[0][1]
+
+        # 2D head position
         head_center = (int(head_center_x), int(head_center_y))
         des = (head_center[0] + int(gazedir_2d[0]*20), int(head_center[1] + gazedir_2d[1]*20))
         visual_imgs = visualize_mesh(renderer, batch_visual_imgs[0], pred_camera.detach(), pred_2d_joints[0])
         visual_imgs = visual_imgs.transpose(1,2,0)
         visual_imgs = np.asarray(visual_imgs)
+
+        # draw allow line from head to gaze direction
         visual_imgs = cv2.arrowedLine(visual_imgs.copy(), head_center, des, (0, 255, 0), 3, tipLength=0.3)
         temp_fname = image_file[:-4] + '_pred.jpg'
         print("save to ", temp_fname)
