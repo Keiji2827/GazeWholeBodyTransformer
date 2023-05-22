@@ -87,6 +87,7 @@ def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler):
                         smpl,
                         mesh_sampler)
 
+    print(args.dataset)
     print("test:", val)
 
 def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_sampler):
@@ -109,8 +110,9 @@ def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_s
             batch_size = image.size(0)
 
             # forward-pass
-            direction, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
             #print(direction.shape)
+            #print(direction, gaze_dir)
 
             loss = criterion_mse(direction,gaze_dir).mean()
 
@@ -159,6 +161,8 @@ def parse_args():
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
+    parser.add_argument('--dataset', type=str, nargs='*', default="", 
+                        help="use test scene.")
 
     args = parser.parse_args()
     return args
@@ -319,9 +323,12 @@ def main(args):
         'courtyard/003',
     ]
 
+    if args.dataset:
+        exp_names = args.dataset
+
     dset = create_gafa_dataset(exp_names=exp_names)
     test_dataloader = DataLoader(
-        dset, batch_size=20, shuffle=False, num_workers=16, pin_memory=True
+        dset, batch_size=40, shuffle=False, num_workers=16, pin_memory=True
     )
 
     run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler)
