@@ -315,7 +315,7 @@ def main(args):
 
     logger.info("Run test")
     exp_names = [
-        'library/1029_2',
+        'library/1029_2', #
         'lab/1013_2',
         'kitchen/1022_2',
         'living_room/006',
