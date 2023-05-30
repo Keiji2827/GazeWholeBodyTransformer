@@ -1,9 +1,5 @@
 import torch
-from torch import nn
-import numpy as np
-from .modeling_bert import BertLayerNorm as LayerNormClass
-from .modeling_bert import BertPreTrainedModel, BertEmbeddings, BertEncoder, BertPooler
-
+from metro.utils.geometric_layers import orthographic_projection
 
 class GAZEFROMBODY(torch.nn.Module):
 
@@ -31,9 +27,9 @@ class GAZEFROMBODY(torch.nn.Module):
 
 
         # metro inference
-        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att, image_feat_newview = self.bert(images, smpl, mesh_sampler)
+        pred_camera, pred_3d_joints, _, _, pred_vertices, _, _, image_feat_newview = self.bert(images, smpl, mesh_sampler)
         #print("shape of pred_3d_joints.", pred_3d_joints.shape) # [1, 14, 3]
-
+        pre_3d_joints_copy = pred_3d_joints 
         pred_head = pred_3d_joints[:, 9,:]
  
 
@@ -46,12 +42,20 @@ class GAZEFROMBODY(torch.nn.Module):
         x = self.encoder2(x)# [batch, 3]
 
         #x = x + feat_dir
-        l2 = (x[:,0]**2 + x[:,1]**2 + x[:,2]**2)**0.5
+        #l2 = (x[:,0]**2 + x[:,1]**2 + x[:,2]**2)**0.5
+        l2 = torch.linalg.norm(x, ord=2, axis=1)
 
         #print(l2.shape)
         x = x/l2[:,None]
 
+        # convert by projection : 3D joint to 2D joint
+        #print("shape of pred_3d_joints.", pred_3d_joints.shape)
+        pred_2d_joints = orthographic_projection(pre_3d_joints_copy, pred_camera)
+
+        pred_head_2d = (pred_2d_joints[:, Nose,:] +  pred_2d_joints[:, Head,:])/2
+        pred_head_2d =((pred_head_2d + 1) * 0.5) * 224
+
         if render == False:
-            return x
+            return x, pred_head_2d
         if render == True:
             return x, pred_vertices, pred_camera

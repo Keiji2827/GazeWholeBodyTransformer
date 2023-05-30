@@ -91,6 +91,23 @@ class CosLoss(torch.nn.Module):
 
         return loss
 
+class PosLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, outputs, head_bb):
+        loss = 0
+
+        for i in range(outputs.shape[0]):
+            #print(head_bb[i][0], outputs[i][0],head_bb[i][2])
+            #print(head_bb[i][1], outputs[i][1],head_bb[i][3])
+            if head_bb[i][0] <= outputs[i][0] <= head_bb[i][2]:
+                if head_bb[i][1] <= outputs[i][1] <= head_bb[i][3]:
+                    loss += 1
+        #print("loss:",loss/outputs.shape[0])
+
+        return (1 - loss/outputs.shape[0])
+ 
 
 
 def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sampler):
@@ -108,8 +125,10 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
     batch_time = AverageMeter()
     data_time = AverageMeter()
     log_losses = AverageMeter()
+    log_pos = AverageMeter()
 
     criterion_mse = CosLoss().cuda(args.device)
+    criterion_pos = PosLoss().cuda(args.device)
 
     for epoch in range(args.num_init_epoch, epochs):
         for iteration, batch in enumerate(train_dataloader):
@@ -132,12 +151,15 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             data_time.update(time.time() - end)
 
             # forward-pass
-            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, head_dir)
+            direction, pred_head = _gaze_network(batch_imgs, smpl, mesh_sampler, head_dir)
 
-            loss = criterion_mse(direction,gaze_dir).mean()
+            loss_mse = criterion_mse(direction,gaze_dir).mean() 
+            loss_pos = criterion_pos(pred_head, head_bb)
 
+            loss = loss_mse + 90*loss_pos
             # update logs
             log_losses.update(loss.item(), batch_size)
+            log_pos.update(loss_pos, batch_size)
 
             # back prop
             optimizer.zero_grad()
@@ -155,7 +177,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ' '.join(
                     ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
-                    + ":loss:{:.4f}, lr:{:.6f}".format(log_losses.avg, optimizer.param_groups[0]["lr"])
+                    + ":loss:{:.4f},loss_pos:{:.4f}, lr:{:.6f}".format(log_losses.avg, log_pos.avg, optimizer.param_groups[0]["lr"])
                 )
         
         val = run_validate(args, val_dataloader, 
@@ -187,7 +209,7 @@ def run_validate(args, val_dataloader, _metro_network, criterion_mse, smpl,mesh_
             batch_size = image.size(0)
 
             # forward-pass
-            direction = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            direction, _ = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
             #print(direction.shape)
 
             loss = criterion_mse(direction,gaze_dir).mean()
