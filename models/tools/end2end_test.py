@@ -58,6 +58,8 @@ class CosLoss(torch.nn.Module):
         super().__init__()
 
     def forward(self, outputs, targets):
+        l2 = torch.linalg.norm(outputs, ord=2, axis=1)
+        outputs = outputs/l2[:,None]
         outputs = outputs.reshape(-1, outputs.shape[-1])
         targets = targets.reshape(-1, targets.shape[-1])
         cos =  torch.sum(outputs*targets,dim=-1)

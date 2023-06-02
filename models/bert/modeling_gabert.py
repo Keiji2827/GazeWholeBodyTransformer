@@ -45,12 +45,6 @@ class GAZEFROMBODY(torch.nn.Module):
         x = self.encoder1(x)
         x = self.encoder2(x)# [batch, 3]
 
-        #x = x + feat_dir
-        l2 = (x[:,0]**2 + x[:,1]**2 + x[:,2]**2)**0.5
-
-        #print(l2.shape)
-        x = x/l2[:,None]
-
         if render == False:
             return x
         if render == True:
