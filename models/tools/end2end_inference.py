@@ -81,8 +81,8 @@ class CosLoss(torch.nn.Module):
         super().__init__()
 
     def forward(self, outputs, targets):
-        l2 = torch.linalg.norm(outputs, ord=2, axis=1)
-        outputs = outputs/l2[:,None]
+        #l2 = torch.linalg.norm(outputs, ord=2, axis=1)
+        #outputs = outputs/l2[:,None]
         outputs = outputs.reshape(-1, outputs.shape[-1])
         targets = targets.reshape(-1, targets.shape[-1])
         cos =  torch.sum(outputs*targets,dim=-1)
@@ -131,11 +131,11 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
     batch_time = AverageMeter()
     data_time = AverageMeter()
     log_losses = AverageMeter()
-    log_norm = AverageMeter()
+    log_cos = AverageMeter()
     log_mse = AverageMeter()
 
     criterion_mse = CosLoss().cuda(args.device)
-    criterion_norm = NormLoss().cuda(args.device)
+    criterion_norm = torch.nn.MSELoss()
     #torch.autograd.set_detect_anomaly(True)
 
     for epoch in range(args.num_init_epoch, epochs):
@@ -163,21 +163,21 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             direction = _gaze_network(batch_imgs, smpl, mesh_sampler, head_dir)
 
             # loss
-            loss_mse = criterion_mse(direction,gaze_dir).mean()
-            loss_norm = criterion_norm(direction,gaze_dir).mean()
+            loss_cos = criterion_mse(direction,gaze_dir).mean()
+            loss_mse = criterion_norm(direction,gaze_dir).mean()
 
             if torch.isnan(direction).any().item():
                 print(img_path)
                 print(direction)
                 print(loss_mse)
-                print(loss_norm)
+                print(loss_cos)
                 return 
 
-            loss = loss_mse + loss_norm*10
+            loss = loss_cos + loss_mse*20
 
             # update logs
             log_losses.update(loss.item(), batch_size)
-            log_norm.update(loss_norm.item(), batch_size)
+            log_cos.update(loss_cos.item(), batch_size)
             log_mse.update(loss_mse.item(), batch_size)
 
             # back prop
@@ -199,16 +199,16 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ' '.join(
                     ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
-                    + ":loss:{:.4f}, mse:{:.2f}, norm:{:.2f}, lr:{:.6f}".format(log_losses.avg,log_mse.avg,log_norm.avg, optimizer.param_groups[0]["lr"])
+                    + ":loss:{:.4f}, cos:{:.2f}, mse:{:.2f}, lr:{:.6f}".format(log_losses.avg,log_cos.avg,log_mse.avg, optimizer.param_groups[0]["lr"])
                 )
 
-            if(iteration%int(max_iter/5)==0):
-                val = run_validate(args, val_dataloader, 
-                                    _gaze_network, 
-                                    criterion_mse,
-                                    smpl,
-                                    mesh_sampler)
-                print("val:", val)
+            if(iteration%int(max_iter/8)==0):
+                #val = run_validate(args, val_dataloader, 
+                #                    _gaze_network, 
+                #                    criterion_mse,
+                #                    smpl,
+                #                    mesh_sampler)
+                #print("val:", val)
                 checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
                 print("save trained model at ", checkpoint_dir)
 
@@ -558,21 +558,21 @@ def main(args):
     else:
         logger.info("Run train")
         exp_names = [
-        'library/1026_3',
-        'library/1028_2',
+        #'library/1026_3',
+        #'library/1028_2',
         'library/1028_5',
-        'lab/1013_1',
+        #'lab/1013_1',
         'lab/1014_1',
-        'kitchen/1022_4',
+        #'kitchen/1022_4',
         'kitchen/1015_4',
-        'living_room/004',
+        #'living_room/004',
         'living_room/005',
         'courtyard/004',
         'courtyard/005',
                     ]
         dset = create_gafa_dataset(exp_names=exp_names)
         #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
-        train_idx, val_idx = np.arange(0, int(len(dset)*0.9)), np.arange(int(len(dset)*0.9), len(dset))
+        train_idx, val_idx = np.arange(0, int(len(dset)*0.95)), np.arange(int(len(dset)*0.95), len(dset))
         train_dset = Subset(dset, train_idx)
         val_dset   = Subset(dset, val_idx)
 

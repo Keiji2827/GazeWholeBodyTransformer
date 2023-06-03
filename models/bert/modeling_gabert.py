@@ -44,8 +44,10 @@ class GAZEFROMBODY(torch.nn.Module):
         x = self.flatten(pred_3d_joints)
         x = self.encoder1(x)
         x = self.encoder2(x)# [batch, 3]
+        l2 = torch.linalg.norm(x, ord=2, axis=1)
+        dir = x/l2[:,None]
 
         if render == False:
-            return x
+            return dir
         if render == True:
-            return x, pred_vertices, pred_camera
+            return dir, pred_vertices, pred_camera
