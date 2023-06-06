@@ -81,33 +81,39 @@ class CosLoss(torch.nn.Module):
         super().__init__()
 
     def forward(self, outputs, targets):
+        #l2 = torch.linalg.norm(outputs, ord=2, axis=1)
+        #outputs = outputs/l2[:,None]
         outputs = outputs.reshape(-1, outputs.shape[-1])
         targets = targets.reshape(-1, targets.shape[-1])
         cos =  torch.sum(outputs*targets,dim=-1)
+        cos[cos != cos] = 0
         cos[cos > 1] = 1
         cos[cos < -1] = -1
         rad = torch.acos(cos)
         loss = torch.rad2deg(rad)#0.5*(1-cos)#criterion(pred_gaze,gaze_dir)
 
+        if torch.isnan(loss).any().item():
+            print(loss)
+            print(cos)
+            print(outputs)
+            print(targets)
+            return 
+
+
         return loss
 
-class PosLoss(torch.nn.Module):
+
+class NormLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, outputs, head_bb):
-        loss = 0
-
-        for i in range(outputs.shape[0]):
-            #print(head_bb[i][0], outputs[i][0],head_bb[i][2])
-            #print(head_bb[i][1], outputs[i][1],head_bb[i][3])
-            if head_bb[i][0] <= outputs[i][0] <= head_bb[i][2]:
-                if head_bb[i][1] <= outputs[i][1] <= head_bb[i][3]:
-                    loss += 1
-        #print("loss:",loss/outputs.shape[0])
-
-        return (1 - loss/outputs.shape[0])
- 
+    def forward(self, outputs, targets):
+        #x = ((outputs[:,0]-targets[:,0])**2 + (outputs[:,1]-targets[:,1])**2 + (outputs[:,2]-targets[:,2])**2)
+        x = outputs - targets
+        #print(x.shape)
+        x = torch.linalg.norm(x, ord=2, axis=1)
+        #x[x != x] = 1.
+        return x
 
 
 def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sampler):
@@ -125,10 +131,12 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
     batch_time = AverageMeter()
     data_time = AverageMeter()
     log_losses = AverageMeter()
-    log_pos = AverageMeter()
+    log_cos = AverageMeter()
+    log_mse = AverageMeter()
 
-    criterion_mse = CosLoss().cuda(args.device)
-    criterion_pos = PosLoss().cuda(args.device)
+    criterion_cos = CosLoss().cuda(args.device)
+    criterion_mse = torch.nn.MSELoss()
+    #torch.autograd.set_detect_anomaly(True)
 
     for epoch in range(args.num_init_epoch, epochs):
         for iteration, batch in enumerate(train_dataloader):
@@ -138,6 +146,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             _gaze_network.train()
 
             image = batch["image"].cuda(args.device)
+            img_path = batch["img_path"]
             gaze_dir = batch["gaze_dir"].cuda(args.device)
             head_dir = batch["head_dir"].cuda(args.device)
             head_bb = batch["head_bb"].cuda(args.device)
@@ -151,15 +160,25 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             data_time.update(time.time() - end)
 
             # forward-pass
-            direction, pred_head = _gaze_network(batch_imgs, smpl, mesh_sampler, head_dir)
+            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, head_dir)
 
-            loss_mse = criterion_mse(direction,gaze_dir).mean() 
-            loss_pos = criterion_pos(pred_head, head_bb)
+            # loss
+            loss_cos = criterion_cos(direction,gaze_dir).mean()
+            loss_mse = criterion_mse(direction,gaze_dir).mean()
 
-            loss = loss_mse + 90*loss_pos
+            if torch.isnan(direction).any().item():
+                print(img_path)
+                print(direction)
+                print(loss_mse)
+                print(loss_cos)
+                return 
+
+            loss = loss_cos + loss_mse*40
+
             # update logs
             log_losses.update(loss.item(), batch_size)
-            log_pos.update(loss_pos, batch_size)
+            log_cos.update(loss_cos.item(), batch_size)
+            log_mse.update(loss_mse.item(), batch_size)
 
             # back prop
             optimizer.zero_grad()
@@ -170,6 +189,9 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             end = time.time()
 
             if(iteration%args.logging_steps==0):
+                #print("direction", direction)
+                #print("gaze_dir", gaze_dir)
+                #print("loss_mse", loss_mse)
                 #print("iteration:",iteration)
                 eta_seconds = batch_time.avg * (max_iter - iteration)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
@@ -177,19 +199,29 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ' '.join(
                     ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
-                    + ":loss:{:.4f},loss_pos:{:.4f}, lr:{:.6f}".format(log_losses.avg, log_pos.avg, optimizer.param_groups[0]["lr"])
+                    + ":loss:{:.4f}, cos:{:.2f}, mse:{:.2f}, lr:{:.6f}".format(log_losses.avg,log_cos.avg,log_mse.avg, optimizer.param_groups[0]["lr"])
                 )
-        
+
+            if(iteration%int(max_iter/20)==0):
+                #val = run_validate(args, val_dataloader, 
+                #                    _gaze_network, 
+                #                    criterion_cos,
+                #                    smpl,
+                #                    mesh_sampler)
+                #print("val:", val)
+                checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
+                print("save trained model at ", checkpoint_dir)
+
         val = run_validate(args, val_dataloader, 
                             _gaze_network, 
-                            criterion_mse,
+                            criterion_cos,
                             smpl,
                             mesh_sampler)
         print("val:", val)
         checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
         print("save trained model at ", checkpoint_dir)
 
-def run_validate(args, val_dataloader, _metro_network, criterion_mse, smpl,mesh_sampler):
+def run_validate(args, val_dataloader, _metro_network, criterion_cos, smpl,mesh_sampler):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     mse = AverageMeter()
@@ -209,10 +241,10 @@ def run_validate(args, val_dataloader, _metro_network, criterion_mse, smpl,mesh_
             batch_size = image.size(0)
 
             # forward-pass
-            direction, _ = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            direction = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
             #print(direction.shape)
 
-            loss = criterion_mse(direction,gaze_dir).mean()
+            loss = criterion_cos(direction,gaze_dir).mean()
 
             # update logs
             mse.update(loss.item(), batch_size)
