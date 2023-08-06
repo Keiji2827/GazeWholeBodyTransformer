@@ -17,6 +17,7 @@ import os.path as op
 import code
 import json
 import time
+import random
 import datetime
 import torch
 import torchvision.models as models
@@ -86,19 +87,11 @@ class CosLoss(torch.nn.Module):
         outputs = outputs.reshape(-1, outputs.shape[-1])
         targets = targets.reshape(-1, targets.shape[-1])
         cos =  torch.sum(outputs*targets,dim=-1)
-        cos[cos != cos] = 0
+        #cos[cos != cos] = 0
         cos[cos > 1] = 1
         cos[cos < -1] = -1
         rad = torch.acos(cos)
         loss = torch.rad2deg(rad)#0.5*(1-cos)#criterion(pred_gaze,gaze_dir)
-
-        if torch.isnan(loss).any().item():
-            print(loss)
-            print(cos)
-            print(outputs)
-            print(targets)
-            return 
-
 
         return loss
 
@@ -133,9 +126,11 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
     log_losses = AverageMeter()
     log_cos = AverageMeter()
     log_mse = AverageMeter()
+    log_bcos = AverageMeter()
 
-    criterion_mse = CosLoss().cuda(args.device)
-    criterion_norm = torch.nn.MSELoss()
+    criterion_cos = CosLoss().cuda(args.device)
+    criterion_bcos = CosLoss().cuda(args.device)
+    criterion_mse = torch.nn.MSELoss()
     #torch.autograd.set_detect_anomaly(True)
 
     for epoch in range(args.num_init_epoch, epochs):
@@ -148,8 +143,8 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             image = batch["image"].cuda(args.device)
             img_path = batch["img_path"]
             gaze_dir = batch["gaze_dir"].cuda(args.device)
-            head_dir = batch["head_dir"].cuda(args.device)
-            head_bb = batch["head_bb"].cuda(args.device)
+            body_dir = batch["body_dir"].cuda(args.device)
+            head_pos = batch["head_pos"].cuda(args.device)
             keypoints = batch["keypoints"].cuda(args.device)
 
             batch_imgs = image
@@ -160,24 +155,31 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             data_time.update(time.time() - end)
 
             # forward-pass
-            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, head_dir)
+            direction, bdirection = _gaze_network(batch_imgs, smpl, mesh_sampler)
+
 
             # loss
-            loss_cos = criterion_mse(direction,gaze_dir).mean()
-            loss_mse = criterion_norm(direction,gaze_dir).mean()
+            loss_cos = criterion_cos(direction,gaze_dir).mean()
+            loss_bcos = criterion_bcos(bdirection,body_dir).mean()
+            loss_mse = criterion_mse(direction,gaze_dir).mean()
 
-            if torch.isnan(direction).any().item():
+            loss = loss_cos + loss_bcos + loss_mse*40
+
+
+            if torch.isnan(loss).any().item():
                 print(img_path)
                 print(direction)
+                print(bdirection)
                 print(loss_mse)
                 print(loss_cos)
+                print(loss_bcos)
                 return 
 
-            loss = loss_cos + loss_mse*20
 
             # update logs
             log_losses.update(loss.item(), batch_size)
             log_cos.update(loss_cos.item(), batch_size)
+            log_bcos.update(loss_bcos.item(), batch_size)
             log_mse.update(loss_mse.item(), batch_size)
 
             # back prop
@@ -199,10 +201,10 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ' '.join(
                     ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
-                    + ":loss:{:.4f}, cos:{:.2f}, mse:{:.2f}, lr:{:.6f}".format(log_losses.avg,log_cos.avg,log_mse.avg, optimizer.param_groups[0]["lr"])
+                    + ":loss:{:.4f}, cos:{:.2f}, bcos:{:.2f}, mse:{:.2f}, lr:{:.6f}".format(log_losses.avg,log_cos.avg,log_bcos.avg,log_mse.avg, optimizer.param_groups[0]["lr"])
                 )
 
-            if(iteration%int(max_iter/8)==0):
+            if(iteration%int(max_iter/7)==0):
                 #val = run_validate(args, val_dataloader, 
                 #                    _gaze_network, 
                 #                    criterion_mse,
@@ -214,14 +216,14 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
 
         val = run_validate(args, val_dataloader, 
                             _gaze_network, 
-                            criterion_mse,
+                            criterion_cos,
                             smpl,
                             mesh_sampler)
         print("val:", val)
         checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
         print("save trained model at ", checkpoint_dir)
 
-def run_validate(args, val_dataloader, _metro_network, criterion_mse, smpl,mesh_sampler):
+def run_validate(args, val_dataloader, _metro_network, criterion_cos, smpl,mesh_sampler):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     mse = AverageMeter()
@@ -241,10 +243,10 @@ def run_validate(args, val_dataloader, _metro_network, criterion_mse, smpl,mesh_
             batch_size = image.size(0)
 
             # forward-pass
-            direction = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            direction, _ = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
             #print(direction.shape)
 
-            loss = criterion_mse(direction,gaze_dir).mean()
+            loss = criterion_cos(direction,gaze_dir).mean()
 
             # update logs
             mse.update(loss.item(), batch_size)
@@ -395,7 +397,7 @@ def main(args):
 
     # default='output/'
     #mkdir(args.output_dir)
-    logger = setup_logger("METRO Inference", args.output_dir, 0)
+    logger = setup_logger("gaze", args.output_dir, 0)
     # randomのシード
     # default=88
     set_seed(args.seed, args.num_gpus)
@@ -558,29 +560,30 @@ def main(args):
     else:
         logger.info("Run train")
         exp_names = [
-        #'library/1026_3',
-        #'library/1028_2',
-        'library/1028_5',
-        #'lab/1013_1',
-        'lab/1014_1',
-        #'kitchen/1022_4',
-        'kitchen/1015_4',
-        #'living_room/004',
-        'living_room/005',
-        'courtyard/004',
+        'library/1028_2',
         'courtyard/005',
+        'kitchen/1015_4',
+        'library/1028_5',
+        'courtyard/004',
+        'kitchen/1022_4',
+        'living_room/005',
+        'lab/1013_1',
+        'lab/1014_1',
+        'library/1026_3',
+        'living_room/004',
                     ]
+        random.shuffle(exp_names)
         dset = create_gafa_dataset(exp_names=exp_names)
         #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
-        train_idx, val_idx = np.arange(0, int(len(dset)*0.95)), np.arange(int(len(dset)*0.95), len(dset))
+        train_idx, val_idx = np.arange(0, int(len(dset)*0.90)), np.arange(int(len(dset)*0.90), len(dset))
         train_dset = Subset(dset, train_idx)
         val_dset   = Subset(dset, val_idx)
 
         train_dataloader = DataLoader(
-            train_dset, batch_size=9, num_workers=16, pin_memory=True, shuffle=True
+            train_dset, batch_size=8, num_workers=4, pin_memory=True, shuffle=True
         )
         val_dataloader = DataLoader(
-            val_dset, batch_size=10, shuffle=False, num_workers=4, pin_memory=True
+            val_dset, batch_size=8, shuffle=False, num_workers=4, pin_memory=True
         )
         # Training
         run(args, train_dataloader, val_dataloader, _gaze_network, mesh_smpl, mesh_sampler)
