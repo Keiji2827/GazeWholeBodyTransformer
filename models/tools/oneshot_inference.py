@@ -14,10 +14,6 @@ from __future__ import absolute_import, division, print_function
 import argparse
 import os
 import os.path as op
-import code
-import json
-import time
-import datetime
 import copy
 import torch
 import torchvision.models as models
@@ -71,10 +67,8 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda(args.device)
 
         # forward-pass
-        direction, gaze_head, _, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
+        direction = _gaze_network(batch_imgs, smpl, mesh_sampler, render=True)
         pred_camera, pred_3d_joints, _, _, pred_vertices, _, _, _ = bodyrenderer_network(batch_imgs, smpl, mesh_sampler)
-
-        #print("test:", pred_head)
 
         visual_imgs = visualize_mesh_no_text( renderer, 
                                               batch_visual_imgs[0],
@@ -101,11 +95,10 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
         pred_head = pred_2d_joints[:, 13,:]
         pred_head =((pred_head + 1) * 0.5) * 224
         print(pred_head)
-        print(gaze_head)
 
         #gazedir_2d /= np.linalg.norm(gazedir_2d)
-        head_center_x = gaze_head[0][0]
-        head_center_y = gaze_head[0][1]
+        head_center_x = pred_head[0][0]
+        head_center_y = pred_head[0][1]
 
         # 2D head position
         head_center = (int(head_center_x), int(head_center_y))
@@ -127,8 +120,6 @@ def visualize_mesh( renderer,
                     pred_camera,
                     pred_keypoints_2d):
     """Tensorboard logging."""
-    to_lsp = list(range(14))
-    rend_imgs = []
     #batch_size = pred_keypoints_2d.shape[0]
     # Do visualization for the first 6 images of the batch
     img = images.cpu().numpy().transpose(1,2,0)
@@ -204,8 +195,6 @@ def parse_args():
     #########################################################
     parser.add_argument("--device", type=str, default='cuda', 
                         help="cuda or cpu")
-    parser.add_argument('--seed', type=int, default=88, 
-                        help="random seed for initialization.")
 
     args = parser.parse_args()
     return args

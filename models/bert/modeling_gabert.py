@@ -76,4 +76,4 @@ class GAZEFROMBODY(torch.nn.Module):
         if render == False:
             return dir, bdir
         if render == True:
-            return dir, pred_vertices, pred_camera
+            return dir#, pred_vertices, pred_camera
