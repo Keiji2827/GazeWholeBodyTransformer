@@ -88,8 +88,8 @@ class CosLoss(torch.nn.Module):
         targets = targets.reshape(-1, targets.shape[-1])
         cos =  torch.sum(outputs*targets,dim=-1)
         #cos[cos != cos] = 0
-        cos[cos > 1] = 1
-        cos[cos < -1] = -1
+        cos[cos > 99/100] = 99/100
+        cos[cos < -99/100] = -99/100
         rad = torch.acos(cos)
         loss = torch.rad2deg(rad)#0.5*(1-cos)#criterion(pred_gaze,gaze_dir)
 
