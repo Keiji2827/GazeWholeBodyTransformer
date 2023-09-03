@@ -10,7 +10,7 @@ class GAZEFROMBODY(torch.nn.Module):
     def __init__(self, args, bert):
         super(GAZEFROMBODY, self).__init__()
         self.bert = bert
-        self.encoder1 = torch.nn.Linear(3*14,32)
+        self.encoder1 = torch.nn.Linear(3*14*2,32)
         self.encoder2 = torch.nn.Linear(32,3)
         self.encoder3 = torch.nn.Linear(3*14,32)
         self.encoder4 = torch.nn.Linear(32,3)
@@ -22,7 +22,7 @@ class GAZEFROMBODY(torch.nn.Module):
 
 
 
-    def forward(self, images, smpl, mesh_sampler, test=None, is_train=False, render=False):
+    def forward(self, images, smpl, mesh_sampler, metro_network, test=None, is_train=False, render=False):
         batch_size = images.size(0)
         self.bert.eval()
         To4joints = [ 8, 9, 13]
@@ -35,45 +35,34 @@ class GAZEFROMBODY(torch.nn.Module):
 
 
         # metro inference
-        pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att, image_feat_newview = self.bert(images, smpl, mesh_sampler)
-        #print("shape of pred_3d_joints.", pred_3d_joints.shape) # [1, 14, 3]
+        _, pred_3d_joints, _, _, _, _, _, _ = self.bert(images, smpl, mesh_sampler)
+        _, pred_3d_joints_metro, _, _, _, _, _, _ = metro_network(images, smpl, mesh_sampler)
 
-        pred_head = pred_3d_joints[:, 9,:]
-        pred_torso = pred_3d_joints[:, Torso,:]
- 
-
+        pred_head = pred_3d_joints[:, Head,:]
+        #pred_torso = pred_3d_joints[:, Torso,:]
         pred_3d_joints_gaze = pred_3d_joints - pred_head[:, None, :]
-        #pred_3d_joints = pred_3d_joints[:,[7,10,13],:]
-        #print("shape of pred_3d_joints.", pred_keypoints_3d.shape) # [1, 14, 3]
-        #x = pred_3d_joints.transpose(1,2)
-        x = self.flatten(pred_3d_joints_gaze)
+
+        pred_head_metro = pred_3d_joints_metro[:, Head,:]
+        pred_3d_joints_gaze_metro = pred_3d_joints_metro - pred_head_metro[:, None, :]
+
+        x = self.flatten(torch.cat((pred_3d_joints_gaze, pred_3d_joints_gaze_metro), dim=1))
         x = self.encoder1(x)
         x = self.encoder2(x)# [batch, 3]
-        dx = torch.full(x.shape, 0.01).to("cuda")
-        l2 = torch.linalg.norm(x + dx, ord=2, axis=1)
-        dir = x*l2[:,None]
-        if torch.isnan(dir).any().item():
-            print("in dir")
-            print(x)
-            print(l2)
-            print(dir)
+        #dx = torch.full(x.shape, 0.01).to("cuda")
+        #l2 = torch.linalg.norm(x + dx, ord=2, axis=1)
+        #l2 = torch.linalg.norm(x, ord=2, axis=1)
+        dir = x#/l2[:,None]
 
-        pred_3d_joints_body = pred_3d_joints - pred_torso[:, None, :]
-        bx = self.flatten2(pred_3d_joints_body)
-        bx = self.encoder3(bx)
-        bx = self.encoder4(bx)# [batch, 3]
-        bdx = torch.full(bx.shape, 0.01).to("cuda")
-        bl2 = torch.linalg.norm(bx + bdx, ord=2, axis=1)
-        bdir = bx/bl2[:,None]
-
-        if torch.isnan(bdir).any().item():
-            print("in bdir")
-            print(bx)
-            print(bl2)
-            print(bdir)
-
+        #pred_3d_joints_body = pred_3d_joints - pred_torso[:, None, :]
+        #bx = self.flatten2(pred_3d_joints_body)
+        #bx = self.encoder3(bx)
+        #bx = self.encoder4(bx)# [batch, 3]
+        #bdx = torch.full(bx.shape, 0.01).to("cuda")
+        #bl2 = torch.linalg.norm(bx + bdx, ord=2, axis=1)
+        #bl2 = torch.linalg.norm(bx, ord=2, axis=1)
+        #bdir = bx#/bl2[:,None]
 
         if render == False:
-            return dir, bdir
+            return dir#, bdir
         if render == True:
             return dir#, pred_vertices, pred_camera

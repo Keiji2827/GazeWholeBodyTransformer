@@ -19,7 +19,7 @@ transform = transforms.Compose([
 class GazeSeqDataset(Dataset):
     def __init__(self, video_path):
         self.video_path = video_path
-        self.n_frames = 1
+        self.n_frames = 25
 
         # load annotation
         with open(os.path.join(video_path, 'annotation.pickle'), "rb") as f:

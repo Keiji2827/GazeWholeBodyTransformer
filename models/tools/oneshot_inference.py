@@ -213,7 +213,7 @@ def main(args):
     logger = setup_logger("WholeBodyGaze Test", args.output_dir, 0)
     # randomのシード
     # default=88
-    set_seed(args.seed, args.num_gpus)
+    #set_seed(args.seed, args.num_gpus)
     logger.info("Using {} GPUs".format(args.num_gpus))
 
     # Mesh and SMPL utils

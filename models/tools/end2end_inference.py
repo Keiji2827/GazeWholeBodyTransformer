@@ -15,7 +15,7 @@ import argparse
 import os
 import os.path as op
 import code
-import json
+import copy
 import time
 import random
 import datetime
@@ -82,8 +82,8 @@ class CosLoss(torch.nn.Module):
         super().__init__()
 
     def forward(self, outputs, targets):
-        #l2 = torch.linalg.norm(outputs, ord=2, axis=1)
-        #outputs = outputs/l2[:,None]
+        l2 = torch.linalg.norm(outputs, ord=2, axis=1)
+        outputs = outputs/l2[:,None]
         outputs = outputs.reshape(-1, outputs.shape[-1])
         targets = targets.reshape(-1, targets.shape[-1])
         cos =  torch.sum(outputs*targets,dim=-1)
@@ -109,7 +109,7 @@ class NormLoss(torch.nn.Module):
         return x
 
 
-def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sampler):
+def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sampler, metro_network):
 
     max_iter = len(train_dataloader)
     print("len of dataset:",max_iter)
@@ -155,31 +155,32 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             data_time.update(time.time() - end)
 
             # forward-pass
-            direction, bdirection = _gaze_network(batch_imgs, smpl, mesh_sampler)
+            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, metro_network)
 
 
             # loss
             loss_cos = criterion_cos(direction,gaze_dir).mean()
-            loss_bcos = criterion_bcos(bdirection,body_dir).mean()
+            #loss_bcos = criterion_bcos(bdirection,body_dir).mean()
             loss_mse = criterion_mse(direction,gaze_dir).mean()
 
-            loss = loss_cos + loss_bcos + loss_mse*40
+            #loss = loss_cos + loss_bcos + loss_mse*40
+            loss = loss_cos + loss_mse*40
 
 
             if torch.isnan(loss).any().item():
                 print(img_path)
                 print(direction)
-                print(bdirection)
+                #print(bdirection)
                 print(loss_mse)
                 print(loss_cos)
-                print(loss_bcos)
+                #print(loss_bcos)
                 return 
 
 
             # update logs
             log_losses.update(loss.item(), batch_size)
             log_cos.update(loss_cos.item(), batch_size)
-            log_bcos.update(loss_bcos.item(), batch_size)
+            #log_bcos.update(loss_bcos.item(), batch_size)
             log_mse.update(loss_mse.item(), batch_size)
 
             # back prop
@@ -201,34 +202,36 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ' '.join(
                     ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
-                    + ":loss:{:.4f}, cos:{:.2f}, bcos:{:.2f}, mse:{:.2f}, lr:{:.6f}".format(log_losses.avg,log_cos.avg,log_bcos.avg,log_mse.avg, optimizer.param_groups[0]["lr"])
+                    + ", loss:{:.4f}, cos:{:.2f}, mse:{:.2f}".format(log_losses.avg,log_cos.avg,log_mse.avg)
+                    + ", lr:{:.6f}".format( optimizer.param_groups[0]["lr"])
                 )
 
-            if(iteration%int(max_iter/7)==0):
-                #val = run_validate(args, val_dataloader, 
-                #                    _gaze_network, 
-                #                    criterion_mse,
-                #                    smpl,
-                #                    mesh_sampler)
-                #print("val:", val)
-                checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
-                print("save trained model at ", checkpoint_dir)
+            #if(iteration%int(max_iter/7)==0):
+            #    #val = run_validate(args, val_dataloader, 
+            #    #                    _gaze_network, 
+            #    #                    criterion_mse,
+            #    #                    smpl,
+            #    #                    mesh_sampler)
+            #    #print("val:", val)
+            #    checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
+            #    print("save trained model at ", checkpoint_dir)
 
         val = run_validate(args, val_dataloader, 
                             _gaze_network, 
                             criterion_cos,
                             smpl,
-                            mesh_sampler)
+                            mesh_sampler,
+                            metro_network)
         print("val:", val)
         checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
         print("save trained model at ", checkpoint_dir)
 
-def run_validate(args, val_dataloader, _metro_network, criterion_cos, smpl,mesh_sampler):
+def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sampler, metro_network):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     mse = AverageMeter()
 
-    _metro_network.eval()
+    gaze_network.eval()
     smpl.eval()
 
     with torch.no_grad():        
@@ -243,7 +246,7 @@ def run_validate(args, val_dataloader, _metro_network, criterion_cos, smpl,mesh_
             batch_size = image.size(0)
 
             # forward-pass
-            direction, _ = _metro_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            direction = gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir, metro_network)
             #print(direction.shape)
 
             loss = criterion_cos(direction,gaze_dir).mean()
@@ -519,6 +522,7 @@ def main(args):
         setattr(_metro_network.trans_encoder[-1].config,'device', args.device)
 
     _metro_network.to(args.device)
+    metro_network = copy.deepcopy(_metro_network)
     logger.info("Run inference")
 
     _gaze_network = GAZEFROMBODY(args, _metro_network)
@@ -558,19 +562,19 @@ def main(args):
         run_inference(args, image_list, _metro_network, mesh_smpl, mesh_sampler)    
 
     else:
-        logger.info("Run train")
+        #logger.info("Run train without lab")
         exp_names = [
-        'library/1028_2',
-        'courtyard/005',
-        'kitchen/1015_4',
-        'library/1028_5',
-        'courtyard/004',
-        'kitchen/1022_4',
         'living_room/005',
+        'living_room/004',
+        'kitchen/1015_4',
+        'kitchen/1022_4',
+        'library/1028_2',
+        'library/1028_5',
+        'library/1026_3',
+        'courtyard/004',
+        'courtyard/005',
         'lab/1013_1',
         'lab/1014_1',
-        'library/1026_3',
-        'living_room/004',
                     ]
         random.shuffle(exp_names)
         dset = create_gafa_dataset(exp_names=exp_names)
@@ -580,13 +584,13 @@ def main(args):
         val_dset   = Subset(dset, val_idx)
 
         train_dataloader = DataLoader(
-            train_dset, batch_size=8, num_workers=4, pin_memory=True, shuffle=True
+            train_dset, batch_size=3, num_workers=4, pin_memory=True, shuffle=True
         )
         val_dataloader = DataLoader(
             val_dset, batch_size=8, shuffle=False, num_workers=4, pin_memory=True
         )
         # Training
-        run(args, train_dataloader, val_dataloader, _gaze_network, mesh_smpl, mesh_sampler)
+        run(args, train_dataloader, val_dataloader, _gaze_network, mesh_smpl, mesh_sampler, metro_network)
 
 if __name__ == "__main__":
     args = parse_args()
