@@ -207,14 +207,19 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                 )
 
             #if(iteration%int(max_iter/7)==0):
-            #    #val = run_validate(args, val_dataloader, 
-            #    #                    _gaze_network, 
-            #    #                    criterion_mse,
-            #    #                    smpl,
-            #    #                    mesh_sampler)
-            #    #print("val:", val)
+            #if(True):
+            #    val = run_validate(args, val_dataloader, 
+            #                        _gaze_network, 
+            #                        criterion_cos,
+            #                        smpl,
+            #                        mesh_sampler,
+            #                        metro_network)
+            #    print("val:", val)
             #    checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
             #    print("save trained model at ", checkpoint_dir)
+
+        checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
+        print("save trained model at ", checkpoint_dir)
 
         val = run_validate(args, val_dataloader, 
                             _gaze_network, 
@@ -223,8 +228,6 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                             mesh_sampler,
                             metro_network)
         print("val:", val)
-        checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
-        print("save trained model at ", checkpoint_dir)
 
 def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sampler, metro_network):
     batch_time = AverageMeter()
@@ -246,7 +249,7 @@ def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sa
             batch_size = image.size(0)
 
             # forward-pass
-            direction = gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir, metro_network)
+            direction = gaze_network(batch_imgs, smpl, mesh_sampler, metro_network)
             #print(direction.shape)
 
             loss = criterion_cos(direction,gaze_dir).mean()

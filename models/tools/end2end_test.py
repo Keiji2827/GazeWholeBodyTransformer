@@ -15,7 +15,7 @@ import argparse
 import os
 import os.path as op
 import code
-import json
+import copy
 import time
 import datetime
 import torch
@@ -70,7 +70,7 @@ class CosLoss(torch.nn.Module):
 
         return loss
 
-def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler):
+def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler, metro_network):
 
     print("len of dataset:", len(test_dataloader))
 
@@ -87,12 +87,13 @@ def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler):
                         _gaze_network, 
                         criterion_mse,
                         smpl,
-                        mesh_sampler)
+                        mesh_sampler,
+                        metro_network)
 
     print(args.dataset)
     print("test:", val)
 
-def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_sampler):
+def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_sampler,metro_network):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     mse = AverageMeter()
@@ -112,7 +113,7 @@ def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_s
             batch_size = image.size(0)
 
             # forward-pass
-            direction, _ = _gaze_network(batch_imgs, smpl, mesh_sampler, gaze_dir)
+            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, metro_network)
             #print(direction.shape)
             #print(direction, gaze_dir)
 
@@ -241,14 +242,14 @@ def main(args):
                 arg_param = getattr(args, param)
                 config_param = getattr(config, param)
                 if arg_param > 0 and arg_param != config_param:
-                    logger.info("Update config parameter {}: {} -> {}".format(param, config_param, arg_param))
+                    #logger.info("Update config parameter {}: {} -> {}".format(param, config_param, arg_param))
                     setattr(config, param, arg_param)
 
             # init a transformer encoder and append it to a list
             assert config.hidden_size % config.num_attention_heads == 0
             # model_class = METRO
             model = model_class(config=config) 
-            logger.info("Init model from scratch.")
+            #logger.info("Init model from scratch.")
             trans_encoder.append(model)
 
         # for ここまで
@@ -259,13 +260,13 @@ def main(args):
             hrnet_checkpoint = './models/hrnet/weights/hrnetv2_w40_imagenet_pretrained.pth'
             hrnet_update_config(hrnet_config, hrnet_yaml)
             backbone = get_cls_net(hrnet_config, pretrained=hrnet_checkpoint)
-            logger.info('=> loading hrnet-v2-w40 model')
+            #logger.info('=> loading hrnet-v2-w40 model')
         elif args.arch=='hrnet-w64':
             hrnet_yaml = 'models/hrnet/weights/cls_hrnet_w64_sgd_lr5e-2_wd1e-4_bs32_x100.yaml'
             hrnet_checkpoint = 'models/hrnet/weights/hrnetv2_w64_imagenet_pretrained.pth'
             hrnet_update_config(hrnet_config, hrnet_yaml)
             backbone = get_cls_net(hrnet_config, pretrained=hrnet_checkpoint)
-            logger.info('=> loading hrnet-v2-w64 model')
+            #logger.info('=> loading hrnet-v2-w64 model')
         else:
             print("=> using pre-trained model '{}'".format(args.arch))
             backbone = models.__dict__[args.arch](pretrained=True)
@@ -283,7 +284,7 @@ def main(args):
         # ここでモデルの初期化
         _metro_network = METRO_Network(args, config, backbone, trans_encoder, mesh_sampler)
 
-        logger.info("Loading state dict from checkpoint {}".format(args.resume_checkpoint))
+        #logger.info("Loading state dict from checkpoint {}".format(args.resume_checkpoint))
         cpu_device = torch.device('cpu')
         state_dict = torch.load(args.resume_checkpoint, map_location=cpu_device)
         _metro_network.load_state_dict(state_dict, strict=False)
@@ -301,6 +302,8 @@ def main(args):
         setattr(_metro_network.trans_encoder[-1].config,'device', args.device)
 
     _metro_network.to(args.device)
+    _metro_network.to(args.device)
+    metro_network = copy.deepcopy(_metro_network)
     logger.info("Run Test")
 
     _gaze_network = GAZEFROMBODY(args, _metro_network)
@@ -333,7 +336,7 @@ def main(args):
         dset, batch_size=40, shuffle=False, num_workers=16, pin_memory=True
     )
 
-    run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler)
+    run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler, metro_network)
 
 if __name__ == "__main__":
     args = parse_args()
