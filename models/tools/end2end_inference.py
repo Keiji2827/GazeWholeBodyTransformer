@@ -109,7 +109,7 @@ class NormLoss(torch.nn.Module):
         return x
 
 
-def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sampler, metro_network):
+def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sampler):
 
     max_iter = len(train_dataloader)
     print("len of dataset:",max_iter)
@@ -155,7 +155,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             data_time.update(time.time() - end)
 
             # forward-pass
-            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, metro_network)
+            direction = _gaze_network(batch_imgs, smpl, mesh_sampler)
 
 
             # loss
@@ -226,10 +226,10 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                             criterion_cos,
                             smpl,
                             mesh_sampler,
-                            metro_network)
+                            )
         print("val:", val)
 
-def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sampler, metro_network):
+def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sampler):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     mse = AverageMeter()
@@ -249,7 +249,7 @@ def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sa
             batch_size = image.size(0)
 
             # forward-pass
-            direction = gaze_network(batch_imgs, smpl, mesh_sampler, metro_network)
+            direction = gaze_network(batch_imgs, smpl, mesh_sampler)
             #print(direction.shape)
 
             loss = criterion_cos(direction,gaze_dir).mean()
@@ -262,67 +262,6 @@ def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sa
 
 
     return mse.avg
-
-
-def run_inference(args, image_list, _metro_network, smpl, mesh_sampler):
-    # switch to evaluate mode
-    # train modeだと.train()となる
-    _metro_network.eval()
-    
-    for image_file in image_list:
-        if 'pred' not in image_file:
-            att_all = []
-            print("in inference",image_file)
-            img = Image.open(image_file)
-            # from torchvision import transforms
-            img_tensor = transform(img)
-            img_visual = transform_visualize(img)
-
-            # 指定した位置にサイズ1の次元を挿入する unsqeeze()
-            batch_imgs = torch.unsqueeze(img_tensor, 0).cuda()
-            batch_visual_imgs = torch.unsqueeze(img_visual, 0).cuda()
-            # 推論はここで完了
-            # forward-pass
-            pred_camera, pred_3d_joints, pred_vertices_sub2, pred_vertices_sub, pred_vertices, hidden_states, att = _metro_network(batch_imgs, smpl, mesh_sampler)
-                
-            return
-            # obtain 3d joints from full mesh
-            pred_3d_joints_from_smpl = smpl.get_h36m_joints(pred_vertices)
-
-            pred_3d_pelvis = pred_3d_joints_from_smpl[:,cfg.H36M_J17_NAME.index('Pelvis'),:]
-            pred_3d_joints_from_smpl = pred_3d_joints_from_smpl[:,cfg.H36M_J17_TO_J14,:]
-            pred_3d_joints_from_smpl = pred_3d_joints_from_smpl - pred_3d_pelvis[:, None, :]
-            pred_vertices = pred_vertices - pred_3d_pelvis[:, None, :]
-
-            # save attantion
-            att_max_value = att[-1]
-            att_cpu = np.asarray(att_max_value.cpu().detach())
-            att_all.append(att_cpu)
-
-            # obtain 3d joints, which are regressed from the full mesh
-            pred_3d_joints_from_smpl = smpl.get_h36m_joints(pred_vertices)
-            pred_3d_joints_from_smpl = pred_3d_joints_from_smpl[:,cfg.H36M_J17_TO_J14,:]
-            # obtain 2d joints, which are projected from 3d joints of smpl mesh
-            pred_2d_joints_from_smpl = orthographic_projection(pred_3d_joints_from_smpl, pred_camera)
-            pred_2d_431_vertices_from_smpl = orthographic_projection(pred_vertices_sub2, pred_camera)
-            visual_imgs_att = visualize_mesh_and_attention( renderer, batch_visual_imgs[0],
-                                                        pred_vertices[0].detach(), 
-                                                        pred_vertices_sub2[0].detach(), 
-                                                        pred_2d_431_vertices_from_smpl[0].detach(),
-                                                        pred_2d_joints_from_smpl[0].detach(),
-                                                        pred_camera.detach(),
-                                                        att[-1][0].detach())
-
-            visual_imgs = visual_imgs_att.transpose(1,2,0)
-            visual_imgs = np.asarray(visual_imgs)
-                    
-            temp_fname = image_file[:-4] + '_metro_pred.jpg'
-            print('save to ', temp_fname)
-            cv2.imwrite(temp_fname, np.asarray(visual_imgs[:,:,::-1]*255))
-
-    return 
-
-
 
 
 def parse_args():
@@ -465,14 +404,14 @@ def main(args):
                 arg_param = getattr(args, param)
                 config_param = getattr(config, param)
                 if arg_param > 0 and arg_param != config_param:
-                    logger.info("Update config parameter {}: {} -> {}".format(param, config_param, arg_param))
+                    #logger.info("Update config parameter {}: {} -> {}".format(param, config_param, arg_param))
                     setattr(config, param, arg_param)
 
             # init a transformer encoder and append it to a list
             assert config.hidden_size % config.num_attention_heads == 0
             # model_class = METRO
             model = model_class(config=config) 
-            logger.info("Init model from scratch.")
+            #logger.info("Init model from scratch.")
             trans_encoder.append(model)
 
         # for ここまで
@@ -525,7 +464,6 @@ def main(args):
         setattr(_metro_network.trans_encoder[-1].config,'device', args.device)
 
     _metro_network.to(args.device)
-    metro_network = copy.deepcopy(_metro_network)
     logger.info("Run inference")
 
     _gaze_network = GAZEFROMBODY(args, _metro_network)
@@ -543,57 +481,36 @@ def main(args):
         _gaze_network = torch.nn.DataParallel(_gaze_network) # make parallel
         torch.backends.cudnn.benchmark = True
 
-    if args.run_eval_only == True:
-        image_list = []
-        # --image_file_or_path ./samples/human-body
-        if not args.image_file_or_path:
-            raise ValueError("image_file_or_path not specified")
-        # ファイルの場合
-        if op.isfile(args.image_file_or_path):
-            image_list = [args.image_file_or_path]
-        # ディレクトリの場合
-        elif op.isdir(args.image_file_or_path):
-            # should be a path with images only
-            for filename in os.listdir(args.image_file_or_path):
-                if filename.endswith(".png") or filename.endswith(".jpg") and 'pred' not in filename:
-                    image_list.append(args.image_file_or_path+'/'+filename) 
-        else:
-            raise ValueError("Cannot find images at {}".format(args.image_file_or_path))
 
-        logger.info("Run eval only\nNot use")
-        # 推論実行
-        run_inference(args, image_list, _metro_network, mesh_smpl, mesh_sampler)    
+    #logger.info("Run train without lab")
+    exp_names = [
+    'living_room/005',
+    'living_room/004',
+    'kitchen/1015_4',
+    'kitchen/1022_4',
+    'library/1028_2',
+    'library/1028_5',
+    'library/1026_3',
+    'courtyard/004',
+    'courtyard/005',
+    'lab/1013_1',
+    'lab/1014_1',
+                ]
+    random.shuffle(exp_names)
+    dset = create_gafa_dataset(exp_names=exp_names)
+    #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
+    train_idx, val_idx = np.arange(0, int(len(dset)*0.90)), np.arange(int(len(dset)*0.90), len(dset))
+    train_dset = Subset(dset, train_idx)
+    val_dset   = Subset(dset, val_idx)
 
-    else:
-        #logger.info("Run train without lab")
-        exp_names = [
-        'living_room/005',
-        'living_room/004',
-        'kitchen/1015_4',
-        'kitchen/1022_4',
-        'library/1028_2',
-        'library/1028_5',
-        'library/1026_3',
-        'courtyard/004',
-        'courtyard/005',
-        'lab/1013_1',
-        'lab/1014_1',
-                    ]
-        random.shuffle(exp_names)
-        dset = create_gafa_dataset(exp_names=exp_names)
-        #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
-        train_idx, val_idx = np.arange(0, int(len(dset)*0.90)), np.arange(int(len(dset)*0.90), len(dset))
-        train_dset = Subset(dset, train_idx)
-        val_dset   = Subset(dset, val_idx)
-
-        train_dataloader = DataLoader(
-            train_dset, batch_size=3, num_workers=4, pin_memory=True, shuffle=True
-        )
-        val_dataloader = DataLoader(
-            val_dset, batch_size=8, shuffle=False, num_workers=4, pin_memory=True
-        )
-        # Training
-        run(args, train_dataloader, val_dataloader, _gaze_network, mesh_smpl, mesh_sampler, metro_network)
+    train_dataloader = DataLoader(
+        train_dset, batch_size=3, num_workers=4, pin_memory=True, shuffle=True
+    )
+    val_dataloader = DataLoader(
+        val_dset, batch_size=8, shuffle=False, num_workers=4, pin_memory=True
+    )
+    # Training
+    run(args, train_dataloader, val_dataloader, _gaze_network, mesh_smpl, mesh_sampler)
 
 if __name__ == "__main__":
     args = parse_args()

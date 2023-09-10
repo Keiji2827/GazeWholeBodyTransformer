@@ -70,7 +70,7 @@ class CosLoss(torch.nn.Module):
 
         return loss
 
-def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler, metro_network):
+def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler):
 
     print("len of dataset:", len(test_dataloader))
 
@@ -87,13 +87,13 @@ def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler, metro_net
                         _gaze_network, 
                         criterion_mse,
                         smpl,
-                        mesh_sampler,
-                        metro_network)
+                        mesh_sampler
+                        )
 
     print(args.dataset)
     print("test:", val)
 
-def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_sampler,metro_network):
+def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_sampler):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     mse = AverageMeter()
@@ -113,9 +113,8 @@ def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_s
             batch_size = image.size(0)
 
             # forward-pass
-            direction = _gaze_network(batch_imgs, smpl, mesh_sampler, metro_network)
+            direction = _gaze_network(batch_imgs, smpl, mesh_sampler)
             #print(direction.shape)
-            #print(direction, gaze_dir)
 
             loss = criterion_mse(direction,gaze_dir).mean()
 
@@ -302,8 +301,6 @@ def main(args):
         setattr(_metro_network.trans_encoder[-1].config,'device', args.device)
 
     _metro_network.to(args.device)
-    _metro_network.to(args.device)
-    metro_network = copy.deepcopy(_metro_network)
     logger.info("Run Test")
 
     _gaze_network = GAZEFROMBODY(args, _metro_network)
@@ -336,7 +333,7 @@ def main(args):
         dset, batch_size=40, shuffle=False, num_workers=16, pin_memory=True
     )
 
-    run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler, metro_network)
+    run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler)
 
 if __name__ == "__main__":
     args = parse_args()
