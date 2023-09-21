@@ -113,10 +113,16 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
 
     max_iter = len(train_dataloader)
     print("len of dataset:",max_iter)
+
+
     epochs = args.num_train_epochs
 
     optimizer = torch.optim.Adam(params=list(_gaze_network.parameters()),lr=args.lr,
                                             betas=(0.9, 0.999), weight_decay=0) 
+
+    logger.info(
+        ", lr:{:.6f}".format( optimizer.param_groups[0]["lr"])
+    )
 
     start_training_time = time.time()
     end = time.time()
@@ -127,10 +133,14 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
     log_cos = AverageMeter()
     log_mse = AverageMeter()
     log_bcos = AverageMeter()
+    log_head = AverageMeter()
+    log_body = AverageMeter()
 
     criterion_cos = CosLoss().cuda(args.device)
     criterion_bcos = CosLoss().cuda(args.device)
     criterion_mse = torch.nn.MSELoss()
+    criterion_head = torch.nn.MSELoss()
+    criterion_body = torch.nn.MSELoss()
     #torch.autograd.set_detect_anomaly(True)
 
     for epoch in range(args.num_init_epoch, epochs):
@@ -143,9 +153,11 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             image = batch["image"].cuda(args.device)
             img_path = batch["img_path"]
             gaze_dir = batch["gaze_dir"].cuda(args.device)
-            body_dir = batch["body_dir"].cuda(args.device)
-            head_pos = batch["head_pos"].cuda(args.device)
-            keypoints = batch["keypoints"].cuda(args.device)
+            head_2d = batch["head_pos_2d"].cuda(args.device)
+            body_2d = batch["body_pos_2d"].cuda(args.device)
+            #body_dir = batch["body_dir"].cuda(args.device)
+            #head_pos = batch["head_pos"].cuda(args.device)
+            #keypoints = batch["keypoints"].cuda(args.device)
 
             batch_imgs = image
             batch_size = image.size(0)
@@ -155,16 +167,17 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             data_time.update(time.time() - end)
 
             # forward-pass
-            direction = _gaze_network(batch_imgs, smpl, mesh_sampler)
-
+            direction, head_pos_2d, body_pos_2d = _gaze_network(batch_imgs, smpl, mesh_sampler, is_train=True)
 
             # loss
             loss_cos = criterion_cos(direction,gaze_dir).mean()
             #loss_bcos = criterion_bcos(bdirection,body_dir).mean()
             loss_mse = criterion_mse(direction,gaze_dir).mean()
+            loss_head = criterion_head(head_pos_2d,head_2d).mean()
+            loss_body = criterion_body(body_pos_2d,body_2d).mean()
 
             #loss = loss_cos + loss_bcos + loss_mse*40
-            loss = loss_cos + loss_mse*40
+            loss = loss_cos + loss_mse*40 + loss_head/10 #+ loss_body/10
 
 
             if torch.isnan(loss).any().item():
@@ -173,7 +186,6 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                 #print(bdirection)
                 print(loss_mse)
                 print(loss_cos)
-                #print(loss_bcos)
                 return 
 
 
@@ -182,6 +194,8 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             log_cos.update(loss_cos.item(), batch_size)
             #log_bcos.update(loss_bcos.item(), batch_size)
             log_mse.update(loss_mse.item(), batch_size)
+            log_head.update(loss_head.item(), batch_size)
+            log_body.update(loss_body.item(), batch_size)
 
             # back prop
             optimizer.zero_grad()
@@ -203,7 +217,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
                     + ", loss:{:.4f}, cos:{:.2f}, mse:{:.2f}".format(log_losses.avg,log_cos.avg,log_mse.avg)
-                    + ", lr:{:.6f}".format( optimizer.param_groups[0]["lr"])
+                    + ", head:{:.4f}, body:{:.4f}".format(log_head.avg,log_body.avg)                    
                 )
 
             #if(iteration%int(max_iter/7)==0):
@@ -497,17 +511,17 @@ def main(args):
     'lab/1014_1',
                 ]
     random.shuffle(exp_names)
-    dset = create_gafa_dataset(exp_names=exp_names)
+    dset = create_gafa_dataset(exp_names=exp_names, test=True, augumented=False)
     #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
     train_idx, val_idx = np.arange(0, int(len(dset)*0.90)), np.arange(int(len(dset)*0.90), len(dset))
     train_dset = Subset(dset, train_idx)
     val_dset   = Subset(dset, val_idx)
 
     train_dataloader = DataLoader(
-        train_dset, batch_size=3, num_workers=4, pin_memory=True, shuffle=True
+        train_dset, batch_size=8, num_workers=32, pin_memory=True, shuffle=True
     )
     val_dataloader = DataLoader(
-        val_dset, batch_size=8, shuffle=False, num_workers=4, pin_memory=True
+        val_dset, batch_size=8, shuffle=False, num_workers=32, pin_memory=True
     )
     # Training
     run(args, train_dataloader, val_dataloader, _gaze_network, mesh_smpl, mesh_sampler)

@@ -1,8 +1,9 @@
 import torch
-from torch import nn
-import numpy as np
-from .modeling_bert import BertLayerNorm as LayerNormClass
-from .modeling_bert import BertPreTrainedModel, BertEmbeddings, BertEncoder, BertPooler
+#from torch import nn
+#import numpy as np
+#from .modeling_bert import BertLayerNorm as LayerNormClass
+#from .modeling_bert import BertPreTrainedModel, BertEmbeddings, BertEncoder, BertPooler
+from metro.utils.geometric_layers import orthographic_projection
 
 
 class GAZEFROMBODY(torch.nn.Module):
@@ -35,10 +36,10 @@ class GAZEFROMBODY(torch.nn.Module):
 
 
         # metro inference
-        _, pred_3d_joints, _, _, _, _, _, _ = self.bert(images, smpl, mesh_sampler)
+        pred_camera, pred_3d_joints, _, _, _, _, _, _ = self.bert(images, smpl, mesh_sampler)
 
-        pred_head = pred_3d_joints[:, Head,:]
-        #pred_torso = pred_3d_joints[:, Torso,:]
+        pred_head = pred_3d_joints[:, Nose,:]
+        pred_torso = pred_3d_joints[:, Torso,:]
         pred_3d_joints_gaze = pred_3d_joints - pred_head[:, None, :]
 
         x = self.flatten(pred_3d_joints_gaze)
@@ -46,8 +47,8 @@ class GAZEFROMBODY(torch.nn.Module):
         x = self.encoder2(x)# [batch, 3]
         #dx = torch.full(x.shape, 0.01).to("cuda")
         #l2 = torch.linalg.norm(x + dx, ord=2, axis=1)
-        #l2 = torch.linalg.norm(x, ord=2, axis=1)
-        dir = x#/l2[:,None]
+        l2 = torch.linalg.norm(x, ord=2, axis=1)
+        dir = x/l2[:,None]
 
         #pred_3d_joints_body = pred_3d_joints - pred_torso[:, None, :]
         #bx = self.flatten2(pred_3d_joints_body)
@@ -58,7 +59,17 @@ class GAZEFROMBODY(torch.nn.Module):
         #bl2 = torch.linalg.norm(bx, ord=2, axis=1)
         #bdir = bx#/bl2[:,None]
 
-        if render == False:
-            return dir#, bdir
-        if render == True:
+
+        # convert by projection : 3D joint to 2D joint
+        pred_2d_joints = orthographic_projection(pred_3d_joints, pred_camera)
+
+        pred_head_2d = pred_2d_joints[:, Nose,:]
+        pred_head_2d =((pred_head_2d + 1) * 0.5) * 224
+
+        pred_body_2d = pred_2d_joints[:, Torso,:]
+        pred_body_2d =((pred_body_2d + 1) * 0.5) * 224
+
+        if is_train == True:
+            return dir, pred_head_2d, pred_body_2d#, bdir
+        if is_train == False:
             return dir#, pred_vertices, pred_camera

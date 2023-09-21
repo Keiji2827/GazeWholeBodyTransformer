@@ -28,7 +28,6 @@ from models.smpl._smpl import SMPL, Mesh
 from models.hrnet.hrnet_cls_net_featmaps import get_cls_net
 from models.hrnet.config import config as hrnet_config
 from models.hrnet.config import update_config as hrnet_update_config
-from models.dataloader.gafa_loader import create_gafa_dataset
 import models.data.config as cfg
 
 from models.utils.renderer import Renderer, visualize_reconstruction_no_text, visualize_reconstruction
@@ -87,7 +86,9 @@ def run(args, image_list, _gaze_network, bodyrenderer_network, renderer, smpl, m
 
         # visualize gaze direction
         direction = direction.cpu()
+        print(direction)
         gazedir_2d = direction[0, 0:2].detach().numpy()
+        print(gazedir_2d)
 
         # convert by projection : 3D joint to 2D joint
         pred_2d_joints = orthographic_projection(pred_3d_joints, pred_camera)
