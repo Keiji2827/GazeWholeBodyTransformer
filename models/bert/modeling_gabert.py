@@ -47,17 +47,17 @@ class GAZEFROMBODY(torch.nn.Module):
         x = self.encoder2(x)# [batch, 3]
         #dx = torch.full(x.shape, 0.01).to("cuda")
         #l2 = torch.linalg.norm(x + dx, ord=2, axis=1)
-        l2 = torch.linalg.norm(x, ord=2, axis=1)
-        dir = x/l2[:,None]
+        #l2 = torch.linalg.norm(x, ord=2, axis=1)
+        dir = x#/l2[:,None]
 
-        #pred_3d_joints_body = pred_3d_joints - pred_torso[:, None, :]
-        #bx = self.flatten2(pred_3d_joints_body)
-        #bx = self.encoder3(bx)
-        #bx = self.encoder4(bx)# [batch, 3]
+        pred_3d_joints_body = pred_3d_joints - pred_torso[:, None, :]
+        bx = self.flatten2(pred_3d_joints_body)
+        bx = self.encoder3(bx)
+        bx = self.encoder4(bx)# [batch, 3]
         #bdx = torch.full(bx.shape, 0.01).to("cuda")
         #bl2 = torch.linalg.norm(bx + bdx, ord=2, axis=1)
         #bl2 = torch.linalg.norm(bx, ord=2, axis=1)
-        #bdir = bx#/bl2[:,None]
+        bdir = bx#/bl2[:,None]
 
 
         # convert by projection : 3D joint to 2D joint
@@ -66,10 +66,7 @@ class GAZEFROMBODY(torch.nn.Module):
         pred_head_2d = pred_2d_joints[:, Nose,:]
         pred_head_2d =((pred_head_2d + 1) * 0.5) * 224
 
-        pred_body_2d = pred_2d_joints[:, Torso,:]
-        pred_body_2d =((pred_body_2d + 1) * 0.5) * 224
-
         if is_train == True:
-            return dir, pred_head_2d, pred_body_2d#, bdir
+            return dir, pred_head_2d, bdir
         if is_train == False:
             return dir#, pred_vertices, pred_camera
