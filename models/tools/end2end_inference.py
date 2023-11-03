@@ -14,8 +14,6 @@ from __future__ import absolute_import, division, print_function
 import argparse
 import os
 import os.path as op
-import code
-import copy
 import time
 import random
 import datetime
@@ -23,7 +21,6 @@ import torch
 import torchvision.models as models
 from torchvision.utils import make_grid
 import numpy as np
-import cv2
 from torch.utils.data import Subset, DataLoader
 from models.bert.modeling_bert import BertConfig
 from models.bert.modeling_metro import METRO_Body_Network as METRO_Network
@@ -38,7 +35,7 @@ from models.utils.logger import setup_logger
 from models.utils.metric_logger import AverageMeter
 from models.utils.miscellaneous import mkdir, set_seed
 
-from PIL import Image
+#from PIL import Image
 from torchvision import transforms
 
 transform = transforms.Compose([           
@@ -96,19 +93,6 @@ class CosLoss(torch.nn.Module):
         return loss
 
 
-class NormLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, outputs, targets):
-        #x = ((outputs[:,0]-targets[:,0])**2 + (outputs[:,1]-targets[:,1])**2 + (outputs[:,2]-targets[:,2])**2)
-        x = outputs - targets
-        #print(x.shape)
-        x = torch.linalg.norm(x, ord=2, axis=1)
-        #x[x != x] = 1.
-        return x
-
-
 def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sampler):
 
     max_iter = len(train_dataloader)
@@ -121,7 +105,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                                             betas=(0.9, 0.999), weight_decay=0) 
 
     logger.info(
-        ", lr:{:.6f}".format( optimizer.param_groups[0]["lr"])
+        "lr:{:.6f}".format( optimizer.param_groups[0]["lr"])
     )
 
     start_training_time = time.time()
@@ -131,17 +115,12 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
     data_time = AverageMeter()
     log_losses = AverageMeter()
     log_cos = AverageMeter()
-    log_mse = AverageMeter()
+    log_mcos = AverageMeter()
     log_bcos = AverageMeter()
-    log_head = AverageMeter()
-    #log_body = AverageMeter()
 
     criterion_cos = CosLoss().cuda(args.device)
     criterion_bcos = CosLoss().cuda(args.device)
-    criterion_mse = torch.nn.MSELoss()
-    criterion_head = torch.nn.MSELoss()
-    #criterion_body = torch.nn.MSELoss()
-    #torch.autograd.set_detect_anomaly(True)
+    criterion_mcos = CosLoss().cuda(args.device)
 
     for epoch in range(args.num_init_epoch, epochs):
         for iteration, batch in enumerate(train_dataloader):
@@ -151,13 +130,15 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             _gaze_network.train()
 
             image = batch["image"].cuda(args.device)
-            img_path = batch["img_path"]
             gaze_dir = batch["gaze_dir"].cuda(args.device)
-            head_2d = batch["head_pos_2d"].cuda(args.device)
-            #body_2d = batch["body_pos_2d"].cuda(args.device)
+            head_dir = batch["head_dir"].cuda(args.device)
             body_dir = batch["body_dir"].cuda(args.device)
-            #head_pos = batch["head_pos"].cuda(args.device)
             #keypoints = batch["keypoints"].cuda(args.device)
+
+            images = batch["images"]
+            batch_images = []
+            for i in range(args.n_frames):
+                batch_images.append(images[i].cuda(args.device))
 
             batch_imgs = image
             batch_size = image.size(0)
@@ -166,36 +147,24 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                 param_group["lr"] = args.lr
             data_time.update(time.time() - end)
 
+
             # forward-pass
-            direction, head_pos_2d, bdirection = _gaze_network(batch_imgs, smpl, mesh_sampler, is_train=True)
+            direction, bdirection, mdirection = _gaze_network(batch_imgs, batch_images, smpl, mesh_sampler, is_train=True)
 
             # loss
             loss_cos = criterion_cos(direction,gaze_dir).mean()
+            loss_mcos = criterion_mcos(mdirection,head_dir).mean()
             loss_bcos = criterion_bcos(bdirection,body_dir).mean()
-            loss_mse = criterion_mse(direction,gaze_dir).mean()
-            loss_head = criterion_head(head_pos_2d,head_2d).mean()
-            #loss_body = criterion_body(body_pos_2d,body_2d).mean()
 
             #loss = loss_cos + loss_bcos + loss_mse*40
-            loss = loss_cos + loss_mse*40 + loss_head/10 + loss_bcos
-
-
-            if torch.isnan(loss).any().item():
-                print(img_path)
-                print(direction)
-                print(bdirection)
-                print(loss_mse)
-                print(loss_cos)
-                return 
+            loss = loss_cos + loss_bcos + loss_mcos
 
 
             # update logs
             log_losses.update(loss.item(), batch_size)
             log_cos.update(loss_cos.item(), batch_size)
+            log_mcos.update(loss_mcos.item(), batch_size)
             log_bcos.update(loss_bcos.item(), batch_size)
-            log_mse.update(loss_mse.item(), batch_size)
-            log_head.update(loss_head.item(), batch_size)
-            #log_body.update(loss_body.item(), batch_size)
 
             # back prop
             optimizer.zero_grad()
@@ -212,9 +181,8 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ' '.join(
                     ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
-                    + ", loss:{:.4f}, cos:{:.2f}, mse:{:.2f}".format(log_losses.avg,log_cos.avg,log_mse.avg)
-                    + ", bcos:{:.3f}".format(log_bcos.avg)        
-                    + ", head:{:.3f}".format(log_head.avg)        
+                    + ", loss:{:.4f}, cos:{:.2f}, mcos:{:.2f}".format(log_losses.avg,log_cos.avg,log_mcos.avg)
+                    + ", bcos:{:.3f}".format(log_bcos.avg)
                 )
 
             #if(iteration%int(max_iter/7)==0):
@@ -243,7 +211,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
 def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sampler):
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    mse = AverageMeter()
+    log_losses = AverageMeter()
 
     gaze_network.eval()
     smpl.eval()
@@ -256,23 +224,24 @@ def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sa
             image = batch["image"].cuda(args.device)
             gaze_dir = batch["gaze_dir"].cuda(args.device)
 
+            images = batch["images"]
+            batch_images = []
+            for i in range(args.n_frames):
+                batch_images.append(images[i].cuda(args.device))
+
             batch_imgs = image
             batch_size = image.size(0)
 
             # forward-pass
-            direction = gaze_network(batch_imgs, smpl, mesh_sampler)
+            direction = gaze_network(batch_imgs, batch_images, smpl, mesh_sampler)
             #print(direction.shape)
 
             loss = criterion_cos(direction,gaze_dir).mean()
 
             # update logs
-            mse.update(loss.item(), batch_size)
+            log_losses.update(loss.item(), batch_size)
 
-            #if (iteration > 1000):
-            #    break
-
-
-    return mse.avg
+    return log_losses.avg
 
 
 def parse_args():
@@ -337,6 +306,8 @@ def parse_args():
                         help="cuda or cpu")
     parser.add_argument('--seed', type=int, default=88, 
                         help="random seed for initialization.")
+    parser.add_argument('--n_frames', type=int, default=7, 
+                        help="number of frames.")
 
 
     args = parser.parse_args()
@@ -508,7 +479,7 @@ def main(args):
     'lab/1014_1',
                 ]
     random.shuffle(exp_names)
-    dset = create_gafa_dataset(exp_names=exp_names, test=True, augumented=False)
+    dset = create_gafa_dataset(n_frames=args.n_frames ,exp_names=exp_names)
     #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
     train_idx, val_idx = np.arange(0, int(len(dset)*0.90)), np.arange(int(len(dset)*0.90), len(dset))
     train_dset = Subset(dset, train_idx)
@@ -518,7 +489,7 @@ def main(args):
         train_dset, batch_size=8, num_workers=16, pin_memory=True, shuffle=True
     )
     val_dataloader = DataLoader(
-        val_dset, batch_size=8, shuffle=False, num_workers=32, pin_memory=True
+        val_dset, batch_size=8, shuffle=False, num_workers=16, pin_memory=True
     )
     # Training
     run(args, train_dataloader, val_dataloader, _gaze_network, mesh_smpl, mesh_sampler)

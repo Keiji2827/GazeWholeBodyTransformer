@@ -74,12 +74,7 @@ def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler):
 
     print("len of dataset:", len(test_dataloader))
 
-    start_training_time = time.time()
-    end = time.time()
     _gaze_network.eval()
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    log_losses = AverageMeter()
 
     criterion_mse = CosLoss().cuda(args.device)
         
@@ -94,34 +89,55 @@ def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler):
     print("test:", val)
 
 def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_sampler):
+    log_losses = AverageMeter()
+
+    end = time.time()
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    mse = AverageMeter()
+    max_iter = len(val_dataloader)
 
-    _gaze_network.eval()
     smpl.eval()
 
     with torch.no_grad():        
         for iteration, batch in enumerate(val_dataloader):
             iteration += 1
-            epoch = iteration
+            _gaze_network.eval()
 
             image = batch["image"].cuda(args.device)
+
             gaze_dir = batch["gaze_dir"].cuda(args.device)
+            images = batch["images"]
+            batch_images = []
+            for i in range(args.n_frames):
+                batch_images.append(images[i].cuda(args.device))
 
             batch_imgs = image
             batch_size = image.size(0)
+            data_time.update(time.time() - end)
 
             # forward-pass
-            direction = _gaze_network(batch_imgs, smpl, mesh_sampler)
+            direction = _gaze_network(batch_imgs,batch_images, smpl, mesh_sampler)
             #print(direction.shape)
 
             loss = criterion_mse(direction,gaze_dir).mean()
 
             # update logs
-            mse.update(loss.item(), batch_size)
+            log_losses.update(loss.item(), batch_size)
 
-    return mse.avg
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if(iteration%200==0):
+                eta_seconds = batch_time.avg * (max_iter - iteration)
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                logger.info(
+                    ' '.join(
+                    ['eta: {eta}', 'iter: {iter}']
+                    ).format(eta=eta_string, iter=iteration)
+                    + ", loss:{:.4f}".format(log_losses.avg) 
+                )
+
+    return log_losses.avg
 
 
 def parse_args():
@@ -165,6 +181,8 @@ def parse_args():
                         help="random seed for initialization.")
     parser.add_argument('--dataset', type=str, nargs='*', default="", 
                         help="use test scene.")
+    parser.add_argument('--n_frames', type=int, default=7, 
+                        help="number of frames.")
 
     args = parser.parse_args()
     return args
@@ -328,10 +346,10 @@ def main(args):
     if args.dataset:
         exp_names = args.dataset
 
-    dset = create_gafa_dataset(exp_names=exp_names, test=True)
+    dset = create_gafa_dataset(n_frames=args.n_frames ,exp_names=exp_names)
     test_dataloader = DataLoader(
         #dset, batch_size=1, shuffle=True, num_workers=1, pin_memory=True
-        dset, batch_size=32, shuffle=False, num_workers=1, pin_memory=True
+        dset, batch_size=8, shuffle=True, num_workers=16, pin_memory=True
     )
 
     run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler)

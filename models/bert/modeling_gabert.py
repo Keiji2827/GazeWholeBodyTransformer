@@ -1,8 +1,5 @@
 import torch
-#from torch import nn
-#import numpy as np
-#from .modeling_bert import BertLayerNorm as LayerNormClass
-#from .modeling_bert import BertPreTrainedModel, BertEmbeddings, BertEncoder, BertPooler
+import numpy as np
 from metro.utils.geometric_layers import orthographic_projection
 
 
@@ -15,18 +12,40 @@ class GAZEFROMBODY(torch.nn.Module):
         self.encoder2 = torch.nn.Linear(32,3)
         self.encoder3 = torch.nn.Linear(3*14,32)
         self.encoder4 = torch.nn.Linear(32,3)
-        #self.encoder3 = torch.nn.Linear(3*90,1)
         self.flatten  = torch.nn.Flatten()
         self.flatten2  = torch.nn.Flatten()
-        #self.feat_mlp1 = torch.nn.Linear(2048*7*7, 64)
-        #self.feat_mlp2 = torch.nn.Linear(64, 3)
+
+        self.body_mlp1 = torch.nn.Linear(args.n_frames*14*3,32)
+        self.body_mlp2 = torch.nn.Linear(32,3)
 
 
+        self.metromodule = []
+        for _ in range(args.n_frames):
+            self.metromodule.append(bert)
 
-    def forward(self, images, smpl, mesh_sampler, test=None, is_train=False, render=False):
-        batch_size = images.size(0)
+        self.n_frame = args.n_frames
+
+
+    def transform_head(self, pred_3d_joints):
+        Nose = 13
+
+        pred_head = pred_3d_joints[:, Nose,:]
+        return pred_3d_joints - pred_head[:, None, :]
+
+    def transform_body(self, pred_3d_joints):
+        Torso = 12
+
+        pred_torso = pred_3d_joints[:, Torso,:]
+        return pred_3d_joints - pred_torso[:, None, :]
+
+
+    def forward(self, image, images, smpl, mesh_sampler, is_train=False):
         self.bert.eval()
-        To4joints = [ 8, 9, 13]
+
+        for i in range(self.n_frame):
+            self.metromodule[i].eval()
+
+        batch_size = image.size(0)
 
         RSholder = 7
         LSholder = 10
@@ -34,13 +53,24 @@ class GAZEFROMBODY(torch.nn.Module):
         Head = 9
         Torso = 12
 
+        pred_joints = []
+        with torch.no_grad():
+            for i in range(self.n_frame):
+                _, tmp_joints, _, _, _, _, _, _ = self.metromodule[i](images[i], smpl, mesh_sampler)
+                tmp_head_joints = self.transform_head(tmp_joints)
+                pred_joints.append(tmp_head_joints)
+
+        pred_joints = torch.stack(pred_joints, dim=3)
+
+        reshaped_pred_joints =pred_joints.view(batch_size, -1)
+        mx = self.body_mlp1(reshaped_pred_joints)
+        mx = self.body_mlp2(mx)
+        mdir = mx
 
         # metro inference
-        pred_camera, pred_3d_joints, _, _, _, _, _, _ = self.bert(images, smpl, mesh_sampler)
+        _, pred_3d_joints, _, _, _, _, _, _ = self.bert(image, smpl, mesh_sampler)
 
-        pred_head = pred_3d_joints[:, Nose,:]
-        pred_torso = pred_3d_joints[:, Torso,:]
-        pred_3d_joints_gaze = pred_3d_joints - pred_head[:, None, :]
+        pred_3d_joints_gaze = self.transform_head(pred_3d_joints)
 
         x = self.flatten(pred_3d_joints_gaze)
         x = self.encoder1(x)
@@ -48,9 +78,9 @@ class GAZEFROMBODY(torch.nn.Module):
         #dx = torch.full(x.shape, 0.01).to("cuda")
         #l2 = torch.linalg.norm(x + dx, ord=2, axis=1)
         #l2 = torch.linalg.norm(x, ord=2, axis=1)
-        dir = x#/l2[:,None]
+        dir = x + mx#/l2[:,None]
 
-        pred_3d_joints_body = pred_3d_joints - pred_torso[:, None, :]
+        pred_3d_joints_body = self.transform_body(pred_3d_joints)
         bx = self.flatten2(pred_3d_joints_body)
         bx = self.encoder3(bx)
         bx = self.encoder4(bx)# [batch, 3]
@@ -60,13 +90,7 @@ class GAZEFROMBODY(torch.nn.Module):
         bdir = bx#/bl2[:,None]
 
 
-        # convert by projection : 3D joint to 2D joint
-        pred_2d_joints = orthographic_projection(pred_3d_joints, pred_camera)
-
-        pred_head_2d = pred_2d_joints[:, Nose,:]
-        pred_head_2d =((pred_head_2d + 1) * 0.5) * 224
-
         if is_train == True:
-            return dir, pred_head_2d, bdir
+            return dir, bdir, mdir
         if is_train == False:
-            return dir#, pred_vertices, pred_camera
+            return dir#, pred_vertices
