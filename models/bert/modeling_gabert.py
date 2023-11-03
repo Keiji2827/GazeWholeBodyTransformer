@@ -9,13 +9,12 @@ class GAZEFROMBODY(torch.nn.Module):
         super(GAZEFROMBODY, self).__init__()
         self.bert = bert
         self.encoder1 = torch.nn.Linear(3*14,32)
+        self.tanh = torch.nn.Tanh()
         self.encoder2 = torch.nn.Linear(32,3)
-        self.encoder3 = torch.nn.Linear(3*14,32)
-        self.encoder4 = torch.nn.Linear(32,3)
         self.flatten  = torch.nn.Flatten()
-        self.flatten2  = torch.nn.Flatten()
 
         self.body_mlp1 = torch.nn.Linear(args.n_frames*14*3,32)
+        self.body_tanh = torch.nn.Tanh()
         self.body_mlp2 = torch.nn.Linear(32,3)
 
 
@@ -64,6 +63,7 @@ class GAZEFROMBODY(torch.nn.Module):
 
         reshaped_pred_joints =pred_joints.view(batch_size, -1)
         mx = self.body_mlp1(reshaped_pred_joints)
+        mx = self.body_tanh(mx)
         mx = self.body_mlp2(mx)
         mdir = mx
 
@@ -74,23 +74,14 @@ class GAZEFROMBODY(torch.nn.Module):
 
         x = self.flatten(pred_3d_joints_gaze)
         x = self.encoder1(x)
+        x = self.tanh(x)
         x = self.encoder2(x)# [batch, 3]
         #dx = torch.full(x.shape, 0.01).to("cuda")
         #l2 = torch.linalg.norm(x + dx, ord=2, axis=1)
         #l2 = torch.linalg.norm(x, ord=2, axis=1)
         dir = x + mx#/l2[:,None]
 
-        pred_3d_joints_body = self.transform_body(pred_3d_joints)
-        bx = self.flatten2(pred_3d_joints_body)
-        bx = self.encoder3(bx)
-        bx = self.encoder4(bx)# [batch, 3]
-        #bdx = torch.full(bx.shape, 0.01).to("cuda")
-        #bl2 = torch.linalg.norm(bx + bdx, ord=2, axis=1)
-        #bl2 = torch.linalg.norm(bx, ord=2, axis=1)
-        bdir = bx#/bl2[:,None]
-
-
         if is_train == True:
-            return dir, bdir, mdir
+            return dir, mdir
         if is_train == False:
             return dir#, pred_vertices

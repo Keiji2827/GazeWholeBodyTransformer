@@ -116,10 +116,10 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
     log_losses = AverageMeter()
     log_cos = AverageMeter()
     log_mcos = AverageMeter()
-    log_bcos = AverageMeter()
+    #log_bcos = AverageMeter()
 
     criterion_cos = CosLoss().cuda(args.device)
-    criterion_bcos = CosLoss().cuda(args.device)
+    #criterion_bcos = CosLoss().cuda(args.device)
     criterion_mcos = CosLoss().cuda(args.device)
 
     for epoch in range(args.num_init_epoch, epochs):
@@ -132,7 +132,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             image = batch["image"].cuda(args.device)
             gaze_dir = batch["gaze_dir"].cuda(args.device)
             head_dir = batch["head_dir"].cuda(args.device)
-            body_dir = batch["body_dir"].cuda(args.device)
+            #body_dir = batch["body_dir"].cuda(args.device)
             #keypoints = batch["keypoints"].cuda(args.device)
 
             images = batch["images"]
@@ -149,22 +149,22 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
 
 
             # forward-pass
-            direction, bdirection, mdirection = _gaze_network(batch_imgs, batch_images, smpl, mesh_sampler, is_train=True)
+            direction, mdirection = _gaze_network(batch_imgs, batch_images, smpl, mesh_sampler, is_train=True)
 
             # loss
             loss_cos = criterion_cos(direction,gaze_dir).mean()
             loss_mcos = criterion_mcos(mdirection,head_dir).mean()
-            loss_bcos = criterion_bcos(bdirection,body_dir).mean()
+            #loss_bcos = criterion_bcos(bdirection,body_dir).mean()
 
             #loss = loss_cos + loss_bcos + loss_mse*40
-            loss = loss_cos + loss_bcos + loss_mcos
+            loss = loss_cos + loss_mcos
 
 
             # update logs
             log_losses.update(loss.item(), batch_size)
             log_cos.update(loss_cos.item(), batch_size)
             log_mcos.update(loss_mcos.item(), batch_size)
-            log_bcos.update(loss_bcos.item(), batch_size)
+            #log_bcos.update(loss_bcos.item(), batch_size)
 
             # back prop
             optimizer.zero_grad()
@@ -181,8 +181,9 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     ' '.join(
                     ['eta: {eta}', 'epoch: {ep}', 'iter: {iter}',]
                     ).format(eta=eta_string, ep=epoch, iter=iteration) 
-                    + ", loss:{:.4f}, cos:{:.2f}, mcos:{:.2f}".format(log_losses.avg,log_cos.avg,log_mcos.avg)
-                    + ", bcos:{:.3f}".format(log_bcos.avg)
+                    + ", loss:{:.4f}".format(log_losses.avg)
+                    + ", cos:{:.2f}, mcos:{:.2f}".format(log_cos.avg,log_mcos.avg)
+                    #+ ", bcos:{:.3f}".format(log_bcos.avg)
                 )
 
             #if(iteration%int(max_iter/7)==0):
