@@ -77,9 +77,8 @@ def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler):
     start_training_time = time.time()
     end = time.time()
     _gaze_network.eval()
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    log_losses = AverageMeter()
+    #data_time = AverageMeter()
+    #log_losses = AverageMeter()
 
     criterion_mse = CosLoss().cuda(args.device)
         
@@ -96,7 +95,8 @@ def run_test(args, test_dataloader, _gaze_network, smpl, mesh_sampler):
 def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_sampler):
     batch_time = AverageMeter()
     data_time = AverageMeter()
-    mse = AverageMeter()
+    log_losses = AverageMeter()
+    max_iter = len(val_dataloader)
 
     _gaze_network.eval()
     smpl.eval()
@@ -119,9 +119,19 @@ def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_s
             loss = criterion_mse(direction,gaze_dir).mean()
 
             # update logs
-            mse.update(loss.item(), batch_size)
+            log_losses.update(loss.item(), batch_size)
 
-    return mse.avg
+            if(iteration%20==0):
+                eta_seconds = batch_time.avg * (max_iter - iteration)
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                logger.info(
+                    ' '.join(
+                    ['eta: {eta}', 'iter: {iter}']
+                    ).format(eta=eta_string, iter=iteration)
+                    + ", loss:{:.4f}".format(log_losses.avg) 
+                )
+
+    return log_losses.avg
 
 
 def parse_args():
@@ -331,7 +341,7 @@ def main(args):
     dset = create_gafa_dataset(exp_names=exp_names, test=True)
     test_dataloader = DataLoader(
         #dset, batch_size=1, shuffle=True, num_workers=1, pin_memory=True
-        dset, batch_size=32, shuffle=False, num_workers=1, pin_memory=True
+        dset, batch_size=72, shuffle=False, num_workers=1, pin_memory=True
     )
 
     run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler)

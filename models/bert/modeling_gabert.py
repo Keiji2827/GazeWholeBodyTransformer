@@ -1,4 +1,5 @@
 import torch
+import copy
 #from torch import nn
 #import numpy as np
 #from .modeling_bert import BertLayerNorm as LayerNormClass
@@ -12,20 +13,39 @@ class GAZEFROMBODY(torch.nn.Module):
         super(GAZEFROMBODY, self).__init__()
         self.bert = bert
         self.encoder1 = torch.nn.Linear(3*14,32)
+        self.tanh = torch.nn.PReLU()
         self.encoder2 = torch.nn.Linear(32,3)
         self.encoder3 = torch.nn.Linear(3*14,32)
         self.encoder4 = torch.nn.Linear(32,3)
         #self.encoder3 = torch.nn.Linear(3*90,1)
         self.flatten  = torch.nn.Flatten()
         self.flatten2  = torch.nn.Flatten()
-        #self.feat_mlp1 = torch.nn.Linear(2048*7*7, 64)
-        #self.feat_mlp2 = torch.nn.Linear(64, 3)
+
+        self.metromodule = copy.deepcopy(bert)
+        self.body_mlp1 = torch.nn.Linear(14*3,32)
+        self.body_tanh1 = torch.nn.PReLU()
+        self.body_mlp2 = torch.nn.Linear(32,32)
+        self.body_tanh2 = torch.nn.PReLU()
+        self.body_mlp3 = torch.nn.Linear(32,3)
 
 
+    def transform_head(self, pred_3d_joints):
+        Nose = 13
 
-    def forward(self, images, smpl, mesh_sampler, test=None, is_train=False, render=False):
+        pred_head = pred_3d_joints[:, Nose,:]
+        return pred_3d_joints - pred_head[:, None, :]
+
+    def transform_body(self, pred_3d_joints):
+        Torso = 12
+
+        pred_torso = pred_3d_joints[:, Torso,:]
+        return pred_3d_joints - pred_torso[:, None, :]
+
+
+    def forward(self, images, smpl, mesh_sampler, is_train=False, render=False):
         batch_size = images.size(0)
         self.bert.eval()
+        self.metromodule.eval()
         To4joints = [ 8, 9, 13]
 
         RSholder = 7
@@ -34,39 +54,35 @@ class GAZEFROMBODY(torch.nn.Module):
         Head = 9
         Torso = 12
 
+        with torch.no_grad():
+            _, tmp_joints, _, _, _, _, _, _ = self.metromodule(images, smpl, mesh_sampler)
+
+        #pred_joints = torch.stack(pred_joints, dim=3)
+        pred_joints = self.transform_head(tmp_joints)
+        mx = self.flatten(pred_joints)
+        mx = self.body_mlp1(mx)
+        mx = self.body_tanh1(mx)
+        mx = self.body_mlp2(mx)
+        mx = self.body_tanh2(mx)
+        mx = self.body_mlp3(mx)
+        mdir = mx
 
         # metro inference
         pred_camera, pred_3d_joints, _, _, _, _, _, _ = self.bert(images, smpl, mesh_sampler)
 
-        pred_head = pred_3d_joints[:, Nose,:]
-        pred_torso = pred_3d_joints[:, Torso,:]
-        pred_3d_joints_gaze = pred_3d_joints - pred_head[:, None, :]
+        pred_3d_joints_gaze = self.transform_head(pred_3d_joints)
 
         x = self.flatten(pred_3d_joints_gaze)
         x = self.encoder1(x)
+        x = self.tanh(x)
         x = self.encoder2(x)# [batch, 3]
         #dx = torch.full(x.shape, 0.01).to("cuda")
         #l2 = torch.linalg.norm(x + dx, ord=2, axis=1)
         #l2 = torch.linalg.norm(x, ord=2, axis=1)
-        dir = x#/l2[:,None]
+        dir = x + mx#/l2[:,None]
 
-        pred_3d_joints_body = pred_3d_joints - pred_torso[:, None, :]
-        bx = self.flatten2(pred_3d_joints_body)
-        bx = self.encoder3(bx)
-        bx = self.encoder4(bx)# [batch, 3]
-        #bdx = torch.full(bx.shape, 0.01).to("cuda")
-        #bl2 = torch.linalg.norm(bx + bdx, ord=2, axis=1)
-        #bl2 = torch.linalg.norm(bx, ord=2, axis=1)
-        bdir = bx#/bl2[:,None]
-
-
-        # convert by projection : 3D joint to 2D joint
-        pred_2d_joints = orthographic_projection(pred_3d_joints, pred_camera)
-
-        pred_head_2d = pred_2d_joints[:, Nose,:]
-        pred_head_2d =((pred_head_2d + 1) * 0.5) * 224
 
         if is_train == True:
-            return dir, pred_head_2d, bdir
+            return dir, mdir
         if is_train == False:
             return dir#, pred_vertices, pred_camera
