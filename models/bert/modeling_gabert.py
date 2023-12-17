@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import copy
 from metro.utils.geometric_layers import orthographic_projection
 
 
@@ -14,13 +15,16 @@ class GAZEFROMBODY(torch.nn.Module):
         self.flatten  = torch.nn.Flatten()
 
         self.body_mlp1 = torch.nn.Linear(args.n_frames*14*3,32)
-        self.body_tanh = torch.nn.Tanh()
-        self.body_mlp2 = torch.nn.Linear(32,3)
+        self.body_tanh1 = torch.nn.Tanh()
+        self.body_mlp2 = torch.nn.Linear(32,32)
+        self.body_tanh2 = torch.nn.Tanh()
+        self.body_mlp3 = torch.nn.Linear(32,3)
 
+        self.copy_bert = copy.deepcopy(bert)
 
-        self.metromodule = []
-        for _ in range(args.n_frames):
-            self.metromodule.append(bert)
+        #self.metromodule = []
+        #for _ in range(args.n_frames):
+        #    self.metromodule.append(self.copy_bert)
 
         self.n_frame = args.n_frames
 
@@ -40,9 +44,10 @@ class GAZEFROMBODY(torch.nn.Module):
 
     def forward(self, image, images, smpl, mesh_sampler, is_train=False):
         self.bert.eval()
+        self.copy_bert.eval()
 
-        for i in range(self.n_frame):
-            self.metromodule[i].eval()
+        #for i in range(self.n_frame):
+        #    self.metromodule[i].eval()
 
         batch_size = image.size(0)
 
@@ -55,7 +60,7 @@ class GAZEFROMBODY(torch.nn.Module):
         pred_joints = []
         with torch.no_grad():
             for i in range(self.n_frame):
-                _, tmp_joints, _, _, _, _, _, _ = self.metromodule[i](images[i], smpl, mesh_sampler)
+                _, tmp_joints, _, _, _, _, _, _ = self.copy_bert(images[i], smpl, mesh_sampler)
                 tmp_head_joints = self.transform_head(tmp_joints)
                 pred_joints.append(tmp_head_joints)
 
@@ -63,8 +68,10 @@ class GAZEFROMBODY(torch.nn.Module):
 
         reshaped_pred_joints =pred_joints.view(batch_size, -1)
         mx = self.body_mlp1(reshaped_pred_joints)
-        mx = self.body_tanh(mx)
+        mx = self.body_tanh1(mx)
         mx = self.body_mlp2(mx)
+        mx = self.body_tanh2(mx)
+        mx = self.body_mlp3(mx)
         mdir = mx
 
         # metro inference

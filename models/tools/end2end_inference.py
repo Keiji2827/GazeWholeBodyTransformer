@@ -21,7 +21,7 @@ import torch
 import torchvision.models as models
 from torchvision.utils import make_grid
 import numpy as np
-from torch.utils.data import Subset, DataLoader
+from torch.utils.data import Subset, DataLoader,random_split
 from models.bert.modeling_bert import BertConfig
 from models.bert.modeling_metro import METRO_Body_Network as METRO_Network
 from models.bert.modeling_metro import METRO
@@ -105,7 +105,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                                             betas=(0.9, 0.999), weight_decay=0) 
 
     logger.info(
-        "lr:{:.6f}".format( optimizer.param_groups[0]["lr"])
+        "lr:{:.10f}".format( optimizer.param_groups[0]["lr"])
     )
 
     start_training_time = time.time()
@@ -186,17 +186,12 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     #+ ", bcos:{:.3f}".format(log_bcos.avg)
                 )
 
-            #if(iteration%int(max_iter/7)==0):
-            #if(True):
-            #    val = run_validate(args, val_dataloader, 
-            #                        _gaze_network, 
-            #                        criterion_cos,
-            #                        smpl,
-            #                        mesh_sampler,
-            #                        metro_network)
+            if(iteration%int(max_iter/3)==0):
+            #    print("iteration:", iteration)
+            #    val = run_validate(args, val_dataloader, _gaze_network, criterion_cos, smpl, mesh_sampler)
             #    print("val:", val)
-            #    checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
-            #    print("save trained model at ", checkpoint_dir)
+                checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
+                print("save trained model at ", checkpoint_dir)
 
         checkpoint_dir = save_checkpoint(_gaze_network, args, epoch, iteration)
         print("save trained model at ", checkpoint_dir)
@@ -214,13 +209,14 @@ def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sa
     data_time = AverageMeter()
     log_losses = AverageMeter()
 
-    gaze_network.eval()
     smpl.eval()
 
-    with torch.no_grad():        
+    with torch.no_grad():     
+    #if(True):   
         for iteration, batch in enumerate(val_dataloader):
             iteration += 1
             epoch = iteration
+            gaze_network.eval()
 
             image = batch["image"].cuda(args.device)
             gaze_dir = batch["gaze_dir"].cuda(args.device)
@@ -232,7 +228,7 @@ def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sa
 
             batch_imgs = image
             batch_size = image.size(0)
-
+            
             # forward-pass
             direction = gaze_network(batch_imgs, batch_images, smpl, mesh_sampler)
             #print(direction.shape)
@@ -482,12 +478,13 @@ def main(args):
     random.shuffle(exp_names)
     dset = create_gafa_dataset(n_frames=args.n_frames ,exp_names=exp_names)
     #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
-    train_idx, val_idx = np.arange(0, int(len(dset)*0.90)), np.arange(int(len(dset)*0.90), len(dset))
-    train_dset = Subset(dset, train_idx)
-    val_dset   = Subset(dset, val_idx)
+    train_idx, val_idx = np.arange(0, int(len(dset)*0.95)), np.arange(int(len(dset)*0.95), len(dset))
+    train_dset, val_dset = random_split(dset, [len(train_idx), len(val_idx)])
+    #train_dset = Subset(dset, train_idx)
+    #val_dset   = Subset(dset, val_idx)
 
     train_dataloader = DataLoader(
-        train_dset, batch_size=8, num_workers=16, pin_memory=True, shuffle=True
+        train_dset, batch_size=8, num_workers=8, pin_memory=True, shuffle=True
     )
     val_dataloader = DataLoader(
         val_dset, batch_size=8, shuffle=False, num_workers=16, pin_memory=True

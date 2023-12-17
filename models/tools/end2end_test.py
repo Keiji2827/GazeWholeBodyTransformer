@@ -127,7 +127,7 @@ def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_s
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if(iteration%200==0):
+            if(iteration%20==0):
                 eta_seconds = batch_time.avg * (max_iter - iteration)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 logger.info(
@@ -138,7 +138,6 @@ def run_validate(args, val_dataloader, _gaze_network, criterion_mse, smpl,mesh_s
                 )
 
     return log_losses.avg
-
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -349,7 +348,7 @@ def main(args):
     dset = create_gafa_dataset(n_frames=args.n_frames ,exp_names=exp_names)
     test_dataloader = DataLoader(
         #dset, batch_size=1, shuffle=True, num_workers=1, pin_memory=True
-        dset, batch_size=8, shuffle=True, num_workers=16, pin_memory=True
+        dset, batch_size=64, shuffle=True, num_workers=1, pin_memory=True
     )
 
     run_test(args, test_dataloader, _gaze_network, mesh_smpl, mesh_sampler)
