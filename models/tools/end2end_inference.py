@@ -85,6 +85,8 @@ class CosLoss(torch.nn.Module):
         l2 = torch.linalg.norm(outputs, ord=2, axis=1)
         outputs = outputs/l2[:,None]
         outputs = outputs.reshape(-1, outputs.shape[-1])
+        l2 = torch.linalg.norm(targets, ord=2, axis=1)
+        targets = targets/l2[:,None]
         targets = targets.reshape(-1, targets.shape[-1])
         cos =  torch.sum(outputs*targets,dim=-1)
         #cos[cos != cos] = 0
@@ -144,7 +146,7 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
             _gaze_network.train()
 
             image = batch["image"].cuda(args.device)
-            img_path = batch["img_path"]
+            #img_path = batch["img_path"]
             gaze_dir = batch["gaze_dir"].cuda(args.device)
             head_dir = batch["head_dir"].cuda(args.device)
             #body_2d = batch["body_pos_2d"].cuda(args.device)
@@ -197,7 +199,8 @@ def run(args, train_dataloader, val_dataloader, _gaze_network, smpl, mesh_sample
                     + ", head:{:.3f}".format(log_head.avg)
                 )
 
-            if(iteration%int((max_iter+10)/3)==0):
+            #if(iteration%int((max_iter+10)/3)==0):
+            if(iteration*5==0):
             #if(True):
             #    val = run_validate(args, val_dataloader, 
             #                        _gaze_network, 
@@ -228,6 +231,8 @@ def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sa
     gaze_network.eval()
     smpl.eval()
 
+    criterion = CosLoss().cuda(args.device)
+
     with torch.no_grad():        
         for iteration, batch in enumerate(val_dataloader):
             iteration += 1
@@ -243,7 +248,7 @@ def run_validate(args, val_dataloader, gaze_network, criterion_cos, smpl,mesh_sa
             direction = gaze_network(batch_imgs, smpl, mesh_sampler)
             #print(direction.shape)
 
-            loss = criterion_cos(direction,gaze_dir).mean()
+            loss = criterion(direction,gaze_dir).mean()
 
             # update logs
             mse.update(loss.item(), batch_size)
@@ -484,9 +489,12 @@ def main(args):
     'lab/1014_1',
                 ]
     random.shuffle(exp_names)
-    dset = create_gafa_dataset(exp_names=exp_names, test=True, augumented=False)
+    # GAFA dataset
+    #dset = create_gafa_dataset(exp_names=exp_names, test=True, augumented=False)
+    # Ryukoku dataset
+    dset = create_gafa_dataset(exp_names=['data20'], root_dir='../MakeDataset', test=True, augumented=False)
     #train_idx, val_idx = np.arange(0, 800), np.arange(int(len(dset)*0.9), len(dset))
-    train_idx, val_idx = np.arange(0, int(len(dset)*0.95)), np.arange(int(len(dset)*0.95), len(dset))
+    train_idx, val_idx = np.arange(0, int(len(dset)*0.9)), np.arange(int(len(dset)*0.9), len(dset))
     train_dset, val_dset = random_split(dset, [len(train_idx), len(val_idx)])
 
     train_dataloader = DataLoader(

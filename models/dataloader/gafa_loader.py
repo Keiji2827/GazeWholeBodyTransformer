@@ -23,6 +23,7 @@ class GazeSeqDataset(Dataset):
         self.n_frames = 7
         self.flip = flip
 
+        print("video_path", video_path)
         # load annotation
         with open(os.path.join(video_path, 'annotation.pickle'), "rb") as f:
             anno_data = pickle.load(f)
@@ -32,12 +33,12 @@ class GazeSeqDataset(Dataset):
         self.bodys = anno_data["bodys"]
         self.heads = anno_data["heads"]
         self.gazes = anno_data["gazes"]
-        self.R_cam = anno_data["R_cam"]
-        self.t_cam = anno_data["t_cam"]
-        self.body_pos = anno_data["body_pos"]
-        self.head_pos = anno_data["head_pos"]
+        #self.R_cam = anno_data["R_cam"]
+        #self.t_cam = anno_data["t_cam"]
+        #self.body_pos = anno_data["body_pos"]
+        #self.head_pos = anno_data["head_pos"]
         self.img_index = anno_data['index']
-        self.keypoints = anno_data['keypoins']
+        #self.keypoints = anno_data['keypoins']
         #self.head_bb = np.vstack(anno_data['head_bb']).astype(np.float32)
         #self.body_bb = np.vstack(anno_data['body_bb']).astype(np.float32)
                 
@@ -77,11 +78,11 @@ class GazeSeqDataset(Dataset):
 
         item = {
             "image":img_,
-            "img_path": img_path,
+            #"img_path": img_path,
             "head_dir": self.heads[idx],
             "body_dir": self.bodys[idx],
             "gaze_dir": self.gazes[idx],
-            "keypoints": np.stack(self.keypoints[idx]).copy()
+            #"keypoints": np.stack(self.keypoints[idx]).copy()
         }
         return item
 
@@ -93,6 +94,7 @@ def create_gafa_dataset(exp_names, root_dir='./data/preprocessed', test=False, a
         cameras = sorted(os.listdir(ed))
         for cm in cameras:
             if not os.path.exists(os.path.join(ed, cm, 'annotation.pickle')):
+                print(f"annotation.pickle not found in {os.path.join(ed, cm)}")
                 continue
 
             dset = GazeSeqDataset(os.path.join(ed, cm),human=test, flip=False)
